@@ -82,6 +82,22 @@ async def test_dispatch_unicode_title_is_delivered_and_recorded(state, sample_en
     assert row["title"] == "Gerät ⚠ offline"
 
 
+@respx.mock
+async def test_dispatch_latin1_only_title_is_delivered_and_recorded(state, sample_endpoint_data):
+    # Title with only latin-1-range non-ASCII (no emoji/other higher codepoints) must
+    # still be RFC 2047-encoded, since httpx requires strict ASCII header values.
+    data = {**sample_endpoint_data, "title_template": "Gerät offline {msg}"}
+    endpoint = await dbq.create_endpoint(state.db, data)
+    route = respx.post("https://ntfy.example.com/alerts").mock(return_value=httpx.Response(200))
+    outcome = await dispatch_event(state, endpoint, {"msg": "now"}, "1.2.3.4", "{}")
+    assert outcome["status"] == "delivered"
+    sent_title = route.calls[0].request.headers["Title"]
+    assert sent_title.isascii() and sent_title.startswith("=?UTF-8?B?")
+    row = await dbq.get_delivery(state.db, outcome["delivery_id"])
+    assert row["status"] == "delivered"
+    assert row["title"] == "Gerät offline now"
+
+
 async def test_dispatch_records_failure_on_unexpected_exception(state, sample_endpoint_data, monkeypatch):
     endpoint = await dbq.create_endpoint(state.db, sample_endpoint_data)
 

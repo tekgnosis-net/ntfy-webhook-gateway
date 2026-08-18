@@ -16,11 +16,11 @@ class SendResult:
 
 
 def _header_safe(value: str) -> str:
-    # HTTP headers are latin-1 on the wire; ntfy's documented convention for
-    # non-ASCII titles is RFC 2047 encoding.
+    # httpx encodes header values as strict ASCII on the wire; ntfy's documented
+    # convention for non-ASCII titles is RFC 2047 encoding.
     cleaned = "".join(ch for ch in value if ch >= " " and ch != "\x7f")
     try:
-        cleaned.encode("latin-1")
+        cleaned.encode("ascii")
         return cleaned
     except UnicodeEncodeError:
         encoded = base64.b64encode(cleaned.encode("utf-8")).decode("ascii")
