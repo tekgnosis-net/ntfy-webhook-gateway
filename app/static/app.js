@@ -372,4 +372,125 @@ views.settings = async (root) => {
   });
 };
 
+views.reports = async (root) => {
+  let range = "7d";
+  root.innerHTML = `<div id="reports-page">
+    <section class="card">
+      <div class="row-between"><h2>Delivery report</h2>
+        <div class="row" id="range-buttons">
+          ${["24h", "7d", "30d"].map((r) =>
+            `<button class="ghost ${r === range ? "active" : ""}" data-range="${r}">${r}</button>`
+          ).join("")}
+        </div></div>
+      <div id="report-body"></div>
+    </section></div>`;
+  const page = $("#reports-page");
+
+  async function load() {
+    const summary = await api(`/api/reports/summary?range=${range}&tz_offset=${tzOffsetMinutes()}`);
+    const max = Math.max(...summary.buckets.map((b) => b.delivered + b.failed + b.rejected), 1);
+    $("#report-body", page).innerHTML = `
+      ${summary.buckets.length ? `<div class="chart">${summary.buckets.map((b) => {
+        const bad = b.failed + b.rejected;
+        return `<div class="col" title="${esc(b.bucket)}: ${b.delivered} ok, ${bad} failed/rejected">
+          <div class="seg failed" style="height:${(bad / max) * 100}%"></div>
+          <div class="seg delivered" style="height:${(b.delivered / max) * 100}%"></div>
+        </div>`;
+      }).join("")}</div>` : "<p class='muted'>No deliveries in this range.</p>"}
+      <table><thead><tr><th>Endpoint</th><th>Delivered</th><th>Failed</th>
+        <th>Rejected</th><th>Total</th><th>Success</th></tr></thead>
+      <tbody>${summary.endpoints.map((e) => `
+        <tr><td>${esc(e.name)}</td><td>${e.delivered}</td>
+        <td class="${e.failed ? "error" : ""}">${e.failed}</td>
+        <td>${e.rejected}</td><td>${e.total}</td>
+        <td>${e.success_rate == null ? "—" : e.success_rate + "%"}</td></tr>`).join("")}
+      </tbody></table>`;
+  }
+
+  $("#range-buttons", page).addEventListener("click", (event) => {
+    const btn = event.target.closest("button[data-range]");
+    if (!btn) return;
+    range = btn.dataset.range;
+    page.querySelectorAll("[data-range]").forEach(
+      (b) => b.classList.toggle("active", b === btn));
+    load();
+  });
+  await load();
+};
+
+views.logs = async (root) => {
+  const endpoints = await api("/api/endpoints");
+  root.innerHTML = `<div id="logs-page">
+    <section class="card">
+      <form id="log-filters" class="row">
+        <select name="endpoint_id" style="width:auto"><option value="">All endpoints</option>
+          ${endpoints.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join("")}
+        </select>
+        <select name="status" style="width:auto"><option value="">Any status</option>
+          ${["delivered", "failed", "rejected"].map((s) => `<option>${s}</option>`).join("")}
+        </select>
+        <input name="q" placeholder="Search text" style="width:12rem">
+        <button>Apply</button>
+        <label class="check"><input type="checkbox" id="log-auto"> Auto-refresh</label>
+      </form>
+      <table><thead><tr><th>Time</th><th>Endpoint</th><th>Status</th><th>Title</th>
+        <th>HTTP</th><th>Attempts</th><th>ms</th></tr></thead>
+        <tbody id="log-rows"></tbody></table>
+      <button id="log-more" class="ghost hidden">Load more</button>
+    </section>
+    <section class="card hidden" id="log-detail"></section>
+  </div>`;
+  const page = $("#logs-page");
+  let items = [];
+
+  async function load(append = false) {
+    const form = $("#log-filters", page);
+    const params = new URLSearchParams();
+    for (const name of ["endpoint_id", "status", "q"]) {
+      if (form.elements[name].value) params.set(name, form.elements[name].value);
+    }
+    if (append && items.length) params.set("before_id", items[items.length - 1].id);
+    const batch = (await api(`/api/logs?${params}`)).items;
+    items = append ? items.concat(batch) : batch;
+    $("#log-more", page).classList.toggle("hidden", batch.length < 50);
+    $("#log-rows", page).innerHTML = items.map((d) => `
+      <tr data-id="${d.id}" class="clickable">
+        <td>${fmtTime(d.received_at)}</td><td>${esc(d.endpoint_name)}</td>
+        <td><span class="badge ${esc(d.status)}">${esc(d.status)}</span></td>
+        <td>${esc(d.title)}</td><td>${d.ntfy_status ?? "—"}</td>
+        <td>${d.attempts}</td><td>${d.duration_ms}</td></tr>`).join("")
+      || "<tr><td colspan='7' class='muted'>No deliveries match.</td></tr>";
+  }
+
+  $("#log-filters", page).addEventListener("submit", (event) => {
+    event.preventDefault();
+    load();
+  });
+  $("#log-more", page).addEventListener("click", () => load(true));
+  $("#log-auto", page).addEventListener("change", (event) => {
+    clearInterval(logsTimer);
+    if (event.target.checked) logsTimer = setInterval(() => load(), 5000);
+  });
+  page.addEventListener("click", async (event) => {
+    const row = event.target.closest("tr[data-id]");
+    if (!row) return;
+    const detail = await api(`/api/logs/${row.dataset.id}`);
+    const box = $("#log-detail", page);
+    box.classList.remove("hidden");
+    box.innerHTML = `
+      <h2>Delivery #${detail.id}</h2>
+      <p><span class="badge ${esc(detail.status)}">${esc(detail.status)}</span>
+        ${fmtTime(detail.received_at)} · from ${esc(detail.source_ip) || "unknown"}
+        · ${detail.attempts} attempt(s) · ${detail.duration_ms} ms
+        ${detail.ntfy_status ? `· ntfy HTTP ${detail.ntfy_status}` : ""}</p>
+      ${detail.error ? `<p class="error">${esc(detail.error)}</p>` : ""}
+      <h3>Notification sent</h3>
+      <pre>${esc(detail.title)}\n${esc(detail.message)}</pre>
+      <h3>Received payload</h3>
+      <pre>${esc(detail.request_body) || "(empty)"}</pre>`;
+    box.scrollIntoView({ behavior: "smooth" });
+  });
+  await load();
+};
+
 route();
