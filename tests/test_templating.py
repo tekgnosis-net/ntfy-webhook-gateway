@@ -39,3 +39,8 @@ def test_render_empty_template():
 def test_render_joins_list_values():
     # Omada's legacy "text" field is a list of event lines.
     assert render("{text}", {"text": ["AP1 down", "AP2 up"]}) == "AP1 down\nAP2 up"
+
+
+def test_payload_text_redacts_secret_keys():
+    out = payload_text({"description": "hi", "shardSecret": "tk_leak", "secret": "x"})
+    assert "tk_leak" not in out and '"secret"' not in out and "hi" in out

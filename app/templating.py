@@ -32,10 +32,15 @@ def _stringify(value) -> str:
     return str(value)
 
 
+_SECRET_KEYS = {"shardsecret", "secret"}
+
+
 def payload_text(event: dict) -> str:
     if set(event.keys()) == {"body"}:
         return str(event["body"])
-    return json.dumps(event, indent=2, ensure_ascii=False, default=str)
+    # Never print credential fields into a notification body.
+    safe = {k: v for k, v in event.items() if k.lower() not in _SECRET_KEYS}
+    return json.dumps(safe, indent=2, ensure_ascii=False, default=str)
 
 
 def render(template: str | None, event: dict) -> str:
