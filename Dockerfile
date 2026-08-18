@@ -1,15 +1,21 @@
-FROM python:3-slim
+FROM python:3.12-slim
 
-WORKDIR /app
+# tzdata lets the TZ env var (from .env) govern container log timestamps
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tzdata \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install standard networking libraries
-RUN pip install --no-cache-dir flask requests
+WORKDIR /srv
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY app/ app/
+COPY scripts/ scripts/
 
-# Copy our app script into the container
-COPY app.py .
+ENV DATA_DIR=/data
+VOLUME /data
+EXPOSE 5000 5001
 
-# Expose Flask's internal port
-EXPOSE 5000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD \
+  python -c "import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('WEBHOOK_PORT','5000')+'/health')"
 
-# Start the server
-CMD ["python", "app.py"]
+CMD ["python", "-m", "app.main"]

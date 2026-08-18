@@ -1,9 +1,17 @@
 services:
-  omada-ntfy-proxy:
+  ntfy-webhook-gateway:
     build: .
-    container_name: omada-ntfy-proxy
+    image: ghcr.io/tekgnosis-net/ntfy-webhook-helper:latest
+    container_name: ntfy-webhook-gateway
     restart: unless-stopped
     ports:
-      - "5000:5000"
-    env_file: .env
-      
+      - "5000:5000"   # webhook receiver — the ONLY port to expose via your reverse proxy
+      - "5001:5001"   # admin UI — keep LAN-only, do not proxy publicly
+    volumes:
+      - gateway-data:/data
+    env_file:
+      - path: .env
+        required: false
+
+volumes:
+  gateway-data:
