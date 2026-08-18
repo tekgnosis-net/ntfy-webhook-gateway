@@ -17,6 +17,10 @@ class AppState:
         return task
 
     async def drain(self):
-        # Test helper: wait for spawned dispatches to finish.
+        # Test helper: wait for spawned dispatches to finish. All tasks in a
+        # batch complete before any of their exceptions is re-raised.
         while self._tasks:
-            await asyncio.gather(*list(self._tasks))
+            results = await asyncio.gather(*list(self._tasks), return_exceptions=True)
+            for result in results:
+                if isinstance(result, BaseException):
+                    raise result
