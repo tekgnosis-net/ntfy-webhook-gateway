@@ -147,4 +147,225 @@ views.dashboard = async (root) => {
     </section>`;
 };
 
+views.settings = async (root) => {
+  const [endpoints, presets, settings] = await Promise.all([
+    api("/api/endpoints"), api("/api/presets"), api("/api/settings"),
+  ]);
+  const webhookBase = `${location.protocol}//${location.hostname}:${settings.webhook_port}/hooks/`;
+  const PRIORITIES = ["min", "low", "default", "high", "urgent"];
+
+  root.innerHTML = `<div id="settings-page">
+    <section class="card">
+      <div class="row-between"><h2>Webhook endpoints</h2>
+        <button id="ep-new">New endpoint</button></div>
+      <table><thead><tr><th>Name</th><th>Webhook URL</th><th>Topic</th>
+        <th>Enabled</th><th></th></tr></thead>
+      <tbody>${endpoints.map((e) => `
+        <tr><td>${esc(e.name)}</td>
+        <td><code>${esc(webhookBase + e.slug)}</code>
+          <button class="ghost" data-copy="${esc(webhookBase + e.slug)}">Copy</button></td>
+        <td>${esc(e.ntfy_topic)}</td>
+        <td>${e.enabled ? "yes" : "<span class='muted'>no</span>"}</td>
+        <td class="actions">
+          <button data-test="${e.id}" class="ghost">Test</button>
+          <button data-edit="${e.id}" class="ghost">Edit</button>
+          <button data-del="${e.id}" class="ghost danger">Delete</button>
+        </td></tr>`).join("")
+        || "<tr><td colspan='5' class='muted'>No endpoints yet.</td></tr>"}
+      </tbody></table>
+    </section>
+    <section class="card hidden" id="ep-editor"></section>
+    <section class="card">
+      <h2>Global settings</h2>
+      <form id="global-form" class="grid">
+        <label>ntfy server URL
+          <input name="ntfy_server" value="${esc(settings.ntfy_server)}"
+                 placeholder="https://ntfy.example.com"></label>
+        <label>Log retention (days)
+          <input name="retention_days" type="number" min="1" max="365"
+                 value="${settings.retention_days}"></label>
+        <button>Save</button>
+      </form>
+    </section>
+    <section class="card">
+      <h2>Admin password</h2>
+      <p class="muted">${settings.auth_mode === "open"
+        ? "No password set — set one below to protect this UI."
+        : settings.auth_mode === "env"
+          ? "Using the ADMIN_PASSWORD environment variable; setting a password here overrides it."
+          : "Password is set. Forgot it? Run scripts/reset_password.py inside the container."}</p>
+      <form id="pw-form" class="grid">
+        <label>Current password
+          <input name="current" type="password" autocomplete="current-password"></label>
+        <label>New password (min 8 chars)
+          <input name="new" type="password" minlength="8" required
+                 autocomplete="new-password"></label>
+        <button>Change password</button>
+      </form>
+    </section></div>`;
+
+  const page = $("#settings-page");
+
+  const ruleRow = (level = "", rule = {}) => `<tr>
+    <td><input class="rule-level" value="${esc(level)}" placeholder="WARN"></td>
+    <td><select class="rule-priority">${PRIORITIES.map((p) =>
+      `<option ${p === (rule.priority || "default") ? "selected" : ""}>${p}</option>`).join("")}
+    </select></td>
+    <td><input class="rule-tags" value="${esc((rule.extra_tags || []).join(","))}"
+        placeholder="warning,fire"></td>
+    <td><button type="button" class="ghost rule-del">✕</button></td></tr>`;
+
+  function openEditor(endpoint) {
+    const box = $("#ep-editor", page);
+    box.classList.remove("hidden");
+    const e = endpoint || {
+      name: "", slug: "", ntfy_topic: "", ntfy_server: "", title_template: "",
+      message_template: "{payload}", level_field: "", rules: {},
+      default_priority: "default", tags: "", enabled: true,
+    };
+    box.innerHTML = `
+      <h2>${endpoint ? "Edit" : "New"} endpoint</h2>
+      ${endpoint ? "" : `<label>Start from preset
+        <select id="ep-preset"><option value="">—</option>
+        ${presets.map((p) => `<option value="${p.key}">${esc(p.label)}</option>`).join("")}
+        </select></label>`}
+      <form id="ep-form" class="grid">
+        <label>Name <input name="name" required value="${esc(e.name)}"></label>
+        <label>Slug (URL path) <input name="slug" required
+          pattern="[a-z0-9][a-z0-9_-]{0,63}" value="${esc(e.slug)}"></label>
+        <label>ntfy topic <input name="ntfy_topic" required value="${esc(e.ntfy_topic)}"></label>
+        <label>ntfy token${endpoint && e.ntfy_token_set
+          ? ` <span class="muted">(saved ${esc(e.ntfy_token_hint)} — blank keeps it)</span>` : ""}
+          <input name="ntfy_token" type="password" autocomplete="off"
+                 placeholder="${endpoint && e.ntfy_token_set ? "unchanged" : "tk_…"}"></label>
+        <label>ntfy server override
+          <input name="ntfy_server" value="${esc(e.ntfy_server || "")}"
+                 placeholder="uses global setting"></label>
+        <label>Title template <input name="title_template" value="${esc(e.title_template)}"></label>
+        <label>Message template
+          <textarea name="message_template">${esc(e.message_template)}</textarea></label>
+        <label>Level field <input name="level_field" value="${esc(e.level_field)}"
+          placeholder="event.level|level"></label>
+        <label>Base tags <input name="tags" value="${esc(e.tags)}" placeholder="webhook,alerts"></label>
+        <label>Default priority <select name="default_priority">${PRIORITIES.map((p) =>
+          `<option ${p === e.default_priority ? "selected" : ""}>${p}</option>`).join("")}
+        </select></label>
+        <label class="check"><input type="checkbox" name="enabled"
+          ${e.enabled ? "checked" : ""}> Enabled</label>
+        <fieldset><legend>Level rules</legend>
+          <table><thead><tr><th>Level</th><th>Priority</th><th>Extra tags</th><th></th></tr></thead>
+          <tbody id="rule-rows">${Object.entries(e.rules)
+            .map(([lvl, rule]) => ruleRow(lvl, rule)).join("")}</tbody></table>
+          <button type="button" id="rule-add" class="ghost">Add rule</button>
+        </fieldset>
+        <div class="row"><button>Save</button>
+          <button type="button" id="ep-cancel" class="ghost">Cancel</button></div>
+      </form>`;
+
+    const presetSelect = $("#ep-preset", box);
+    if (presetSelect) presetSelect.addEventListener("change", () => {
+      const preset = presets.find((p) => p.key === presetSelect.value);
+      if (!preset) return;
+      const form = $("#ep-form", box);
+      for (const field of ["title_template", "message_template", "level_field",
+                           "default_priority", "tags"]) {
+        form.elements[field].value = preset[field];
+      }
+      $("#rule-rows", box).innerHTML = Object.entries(preset.rules)
+        .map(([lvl, rule]) => ruleRow(lvl, rule)).join("");
+    });
+    $("#rule-add", box).addEventListener("click", () =>
+      $("#rule-rows", box).insertAdjacentHTML("beforeend", ruleRow()));
+    $("#ep-cancel", box).addEventListener("click", () => box.classList.add("hidden"));
+
+    $("#ep-form", box).addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = event.target;
+      const rules = {};
+      for (const row of $("#rule-rows", box).querySelectorAll("tr")) {
+        const level = $(".rule-level", row).value.trim();
+        if (!level) continue;
+        rules[level] = {
+          priority: $(".rule-priority", row).value,
+          extra_tags: $(".rule-tags", row).value.split(",")
+            .map((t) => t.trim()).filter(Boolean),
+        };
+      }
+      const tokenInput = form.elements.ntfy_token.value;
+      const body = {
+        name: form.elements.name.value, slug: form.elements.slug.value,
+        ntfy_topic: form.elements.ntfy_topic.value,
+        ntfy_token: endpoint ? (tokenInput === "" ? null : tokenInput) : tokenInput,
+        ntfy_server: form.elements.ntfy_server.value || null,
+        title_template: form.elements.title_template.value,
+        message_template: form.elements.message_template.value,
+        level_field: form.elements.level_field.value,
+        rules,
+        default_priority: form.elements.default_priority.value,
+        tags: form.elements.tags.value,
+        enabled: form.elements.enabled.checked,
+      };
+      try {
+        if (endpoint) await api(`/api/endpoints/${endpoint.id}`, { method: "PUT", body });
+        else await api("/api/endpoints", { body });
+        toast("Endpoint saved");
+        route();
+      } catch (err) { toast(err.message, true); }
+    });
+  }
+
+  page.addEventListener("click", async (event) => {
+    const btn = event.target.closest("button");
+    if (!btn) return;
+    if (btn.dataset.copy) {
+      await navigator.clipboard.writeText(btn.dataset.copy);
+      toast("Webhook URL copied");
+    } else if (btn.dataset.test) {
+      btn.disabled = true;
+      try {
+        const outcome = await api(`/api/endpoints/${btn.dataset.test}/test`, { body: {} });
+        toast(outcome.status === "delivered" ? "Test notification delivered"
+          : `Test failed: ${outcome.error}`, outcome.status !== "delivered");
+      } catch (err) { toast(err.message, true); }
+      btn.disabled = false;
+    } else if (btn.dataset.edit) {
+      openEditor(endpoints.find((e) => e.id === Number(btn.dataset.edit)));
+    } else if (btn.dataset.del) {
+      const target = endpoints.find((e) => e.id === Number(btn.dataset.del));
+      if (confirm(`Delete endpoint "${target.name}" and its logs?`)) {
+        await api(`/api/endpoints/${target.id}`, { method: "DELETE" });
+        toast("Endpoint deleted");
+        route();
+      }
+    } else if (btn.id === "ep-new") {
+      openEditor(null);
+    }
+  });
+
+  $("#global-form", page).addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.target;
+    try {
+      await api("/api/settings", { method: "PUT", body: {
+        ntfy_server: form.elements.ntfy_server.value,
+        retention_days: Number(form.elements.retention_days.value),
+      } });
+      toast("Settings saved");
+    } catch (err) { toast(err.message, true); }
+  });
+
+  $("#pw-form", page).addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.target;
+    try {
+      await api("/api/password", { body: {
+        current: form.elements.current.value, new: form.elements.new.value,
+      } });
+      toast("Password changed");
+      form.reset();
+      route();
+    } catch (err) { toast(err.message, true); }
+  });
+};
+
 route();
