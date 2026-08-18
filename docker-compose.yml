@@ -1,0 +1,9 @@
+services:
+  omada-ntfy-proxy:
+    build: .
+    container_name: omada-ntfy-proxy
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    env_file: .env
+      
