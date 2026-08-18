@@ -10,7 +10,7 @@ AUTH_TOKEN = os.environ.get("NTFY_AUTH_TOKEN", "fallback_token_if_not_set")
 NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "omada")
 
 # For post, build URL
-NTFY_URL = NTFY + "/" + NTFY_TOPIC
+NTFY_URL = NTFY_HOST + "/" + NTFY_TOPIC
 # -------------------------------------
 
 @app.route("/omada-webhook", methods=["POST"])
