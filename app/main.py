@@ -27,6 +27,7 @@ async def seed_legacy(db):
             "message_template": preset["message_template"],
             "level_field": preset["level_field"], "rules": preset["rules"],
             "default_priority": preset["default_priority"], "tags": preset["tags"],
+            "secret": "",
         })
         if legacy["server"] and not await dbq.get_setting(db, "ntfy_server"):
             await dbq.set_setting(db, "ntfy_server", legacy["server"].rstrip("/"))

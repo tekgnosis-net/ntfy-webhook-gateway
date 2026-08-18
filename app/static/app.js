@@ -160,17 +160,20 @@ views.settings = async (root) => {
         <button id="ep-new">New endpoint</button></div>
       <table><thead><tr><th>Name</th><th>Webhook URL</th><th>Topic</th>
         <th>Enabled</th><th></th></tr></thead>
-      <tbody>${endpoints.map((e) => `
+      <tbody>${endpoints.map((e) => {
+        const url = webhookBase + e.slug + (e.secret ? "?secret=" + encodeURIComponent(e.secret) : "");
+        return `
         <tr><td>${esc(e.name)}</td>
-        <td><code>${esc(webhookBase + e.slug)}</code>
-          <button class="ghost" data-copy="${esc(webhookBase + e.slug)}">Copy</button></td>
+        <td><code>${esc(url)}</code>
+          <button class="ghost" data-copy="${esc(url)}">Copy</button></td>
         <td>${esc(e.ntfy_topic)}</td>
         <td>${e.enabled ? "yes" : "<span class='muted'>no</span>"}</td>
         <td class="actions">
           <button data-test="${e.id}" class="ghost">Test</button>
           <button data-edit="${e.id}" class="ghost">Edit</button>
           <button data-del="${e.id}" class="ghost danger">Delete</button>
-        </td></tr>`).join("")
+        </td></tr>`;
+      }).join("")
         || "<tr><td colspan='5' class='muted'>No endpoints yet.</td></tr>"}
       </tbody></table>
     </section>
@@ -221,7 +224,7 @@ views.settings = async (root) => {
     const e = endpoint || {
       name: "", slug: "", ntfy_topic: "", ntfy_server: "", title_template: "",
       message_template: "{payload}", level_field: "", rules: {},
-      default_priority: "default", tags: "", enabled: true,
+      default_priority: "default", tags: "", enabled: true, secret: "",
     };
     box.innerHTML = `
       <h2>${endpoint ? "Edit" : "New"} endpoint</h2>
@@ -238,6 +241,10 @@ views.settings = async (root) => {
           ? ` <span class="muted">(saved ${esc(e.ntfy_token_hint)} — blank keeps it)</span>` : ""}
           <input name="ntfy_token" type="password" autocomplete="off"
                  placeholder="${endpoint && e.ntfy_token_set ? "unchanged" : "tk_…"}"></label>
+        <label>Webhook secret <span class="muted">(optional — empty disables auth)</span>
+          <div class="row"><input name="secret" value="${esc(e.secret || "")}"
+            placeholder="appended to the URL as ?secret=…">
+          <button type="button" id="secret-gen" class="ghost">Generate</button></div></label>
         <label>ntfy server override
           <input name="ntfy_server" value="${esc(e.ntfy_server || "")}"
                  placeholder="uses global setting"></label>
@@ -281,6 +288,11 @@ views.settings = async (root) => {
       if (del) del.closest("tr").remove();
     });
     $("#ep-cancel", box).addEventListener("click", () => box.classList.add("hidden"));
+    $("#secret-gen", box).addEventListener("click", () => {
+      const bytes = crypto.getRandomValues(new Uint8Array(24));
+      $("[name=secret]", box).value = btoa(String.fromCharCode(...bytes))
+        .replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+    });
 
     $("#ep-form", box).addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -308,6 +320,7 @@ views.settings = async (root) => {
         default_priority: form.elements.default_priority.value,
         tags: form.elements.tags.value,
         enabled: form.elements.enabled.checked,
+        secret: form.elements.secret.value.trim(),
       };
       try {
         if (endpoint) await api(`/api/endpoints/${endpoint.id}`, { method: "PUT", body });

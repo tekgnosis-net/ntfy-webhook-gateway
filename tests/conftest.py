@@ -28,6 +28,7 @@ def sample_endpoint_data():
         "rules": {"WARN": {"priority": "high", "extra_tags": ["warning"]}},
         "default_priority": "default",
         "tags": "webhook",
+        "secret": "",
     }
 
 

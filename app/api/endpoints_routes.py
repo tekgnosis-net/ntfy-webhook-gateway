@@ -24,11 +24,12 @@ class EndpointIn(BaseModel):
     default_priority: str = "default"
     tags: str = ""
     enabled: bool = True
+    secret: str = Field(default="", max_length=128)
 
 
 PUBLIC_FIELDS = ("id", "slug", "name", "enabled", "ntfy_topic", "ntfy_server",
                  "title_template", "message_template", "level_field", "rules",
-                 "default_priority", "tags", "created_at", "updated_at")
+                 "default_priority", "tags", "secret", "created_at", "updated_at")
 
 
 def public_endpoint(row: dict) -> dict:

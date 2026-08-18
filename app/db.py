@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS endpoints (
   rules TEXT NOT NULL DEFAULT '{}',
   default_priority TEXT NOT NULL DEFAULT 'default',
   tags TEXT NOT NULL DEFAULT '',
+  secret TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -50,7 +51,7 @@ CREATE INDEX IF NOT EXISTS ix_deliveries_endpoint ON deliveries(endpoint_id, rec
 ENDPOINT_FIELDS = (
     "slug", "name", "enabled", "ntfy_topic", "ntfy_token", "ntfy_server",
     "title_template", "message_template", "level_field", "rules",
-    "default_priority", "tags",
+    "default_priority", "tags", "secret",
 )
 
 
@@ -65,6 +66,11 @@ async def connect(path) -> aiosqlite.Connection:
     await db.execute("PRAGMA foreign_keys=ON")
     await db.executescript(SCHEMA)
     await db.commit()
+    cur = await db.execute("PRAGMA table_info(endpoints)")
+    columns = {row["name"] for row in await cur.fetchall()}
+    if "secret" not in columns:
+        await db.execute("ALTER TABLE endpoints ADD COLUMN secret TEXT NOT NULL DEFAULT ''")
+        await db.commit()
     return db
 
 

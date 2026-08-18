@@ -38,6 +38,15 @@ async def test_crud_and_masking(admin_client):
     assert (await admin_client.get(f"/api/endpoints/{created['id']}")).status_code == 404
 
 
+async def test_secret_returned_and_clearable(admin_client):
+    created = (await admin_client.post("/api/endpoints", json={**EP, "secret": "abc123"})).json()
+    assert created["secret"] == "abc123"
+
+    update = {**EP, "secret": ""}
+    row = (await admin_client.put(f"/api/endpoints/{created['id']}", json=update)).json()
+    assert row["secret"] == ""
+
+
 async def test_presets_listed(admin_client):
     keys = {p["key"] for p in (await admin_client.get("/api/presets")).json()}
     assert {"generic", "omada"} <= keys

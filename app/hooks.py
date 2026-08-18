@@ -1,4 +1,5 @@
 import json
+import secrets
 import time
 
 from fastapi import FastAPI, Request
@@ -84,6 +85,15 @@ def create_hooks_app(state) -> "FastAPI":
                                       status="rejected", source_ip=source_ip,
                                       request_body=body_text, error="endpoint disabled")
             return JSONResponse({"error": "not found"}, status_code=404)
+        if endpoint["secret"]:
+            provided = request.query_params.get("secret") \
+                or request.headers.get("x-webhook-secret") or ""
+            if not secrets.compare_digest(provided, endpoint["secret"]):
+                await dbq.record_delivery(state.db, endpoint_id=endpoint["id"],
+                                          status="rejected", source_ip=source_ip,
+                                          request_body=body_text,
+                                          error="invalid or missing secret")
+                return JSONResponse({"error": "not found"}, status_code=404)
         events = parse_events(raw)
         for event in events:
             state.spawn(dispatch_event(state, endpoint, event, source_ip, body_text))

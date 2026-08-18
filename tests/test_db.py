@@ -38,6 +38,51 @@ async def test_duplicate_slug_raises(db, sample_endpoint_data):
         await dbq.create_endpoint(db, sample_endpoint_data)
 
 
+async def test_migration_adds_secret_column(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "legacy.db"
+    raw = sqlite3.connect(str(path))
+    raw.execute("""
+        CREATE TABLE IF NOT EXISTS endpoints (
+          id INTEGER PRIMARY KEY,
+          slug TEXT NOT NULL UNIQUE,
+          name TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          ntfy_topic TEXT NOT NULL,
+          ntfy_token TEXT NOT NULL DEFAULT '',
+          ntfy_server TEXT,
+          title_template TEXT NOT NULL DEFAULT '',
+          message_template TEXT NOT NULL DEFAULT '{payload}',
+          level_field TEXT NOT NULL DEFAULT '',
+          rules TEXT NOT NULL DEFAULT '{}',
+          default_priority TEXT NOT NULL DEFAULT 'default',
+          tags TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+    """)
+    raw.commit()
+    raw.close()
+
+    conn = await dbq.connect(path)
+    try:
+        cur = await conn.execute("PRAGMA table_info(endpoints)")
+        columns = {row["name"] for row in await cur.fetchall()}
+        assert "secret" in columns
+
+        created = await dbq.create_endpoint(conn, {
+            "slug": "migrated", "name": "Migrated", "enabled": True,
+            "ntfy_topic": "alerts", "ntfy_token": "", "ntfy_server": None,
+            "title_template": "", "message_template": "{payload}",
+            "level_field": "", "rules": {}, "default_priority": "default",
+            "tags": "", "secret": "abc",
+        })
+        assert created["secret"] == "abc"
+    finally:
+        await conn.close()
+
+
 async def test_sessions(db):
     future = "2999-01-01T00:00:00+00:00"
     past = "2000-01-01T00:00:00+00:00"
