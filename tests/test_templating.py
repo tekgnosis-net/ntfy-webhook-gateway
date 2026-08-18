@@ -34,3 +34,8 @@ def test_render_payload_raw_body():
 def test_render_empty_template():
     assert render("", {"a": 1}) == ""
     assert render(None, {"a": 1}) == ""
+
+
+def test_render_joins_list_values():
+    # Omada's legacy "text" field is a list of event lines.
+    assert render("{text}", {"text": ["AP1 down", "AP2 up"]}) == "AP1 down\nAP2 up"

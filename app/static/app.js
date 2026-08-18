@@ -260,9 +260,9 @@ views.settings = async (root) => {
           <input name="ntfy_token" type="password" autocomplete="off"
                  placeholder="${endpoint && e.ntfy_token_set ? "unchanged" : "tk_…"}"></label>
         <label>Webhook secret <span class="muted">(optional — empty disables auth)</span>
-          <div class="row"><input name="secret" value="${esc(e.secret || "")}"
+          <span class="field-row"><input name="secret" value="${esc(e.secret || "")}"
             placeholder="appended to the URL as ?secret=…">
-          <button type="button" id="secret-gen" class="ghost">Generate</button></div></label>
+          <button type="button" id="secret-gen" class="ghost">Generate</button></span></label>
         <label>ntfy server override
           <input name="ntfy_server" value="${esc(e.ntfy_server || "")}"
                  placeholder="uses global setting"></label>

@@ -24,6 +24,14 @@ def resolve_first(data, spec: str):
     return None
 
 
+def _stringify(value) -> str:
+    # Omada's legacy "text" field is a list of event lines; render lists as
+    # one line each rather than a Python repr.
+    if isinstance(value, list):
+        return "\n".join(str(item) for item in value)
+    return str(value)
+
+
 def payload_text(event: dict) -> str:
     if set(event.keys()) == {"body"}:
         return str(event["body"])
@@ -36,7 +44,7 @@ def render(template: str | None, event: dict) -> str:
         if spec == "payload":
             return payload_text(event)
         value = resolve_first(event, spec)
-        return "" if value is None else str(value)
+        return "" if value is None else _stringify(value)
 
     return _PLACEHOLDER.sub(substitute, template or "").strip()
 
@@ -55,7 +63,7 @@ def render_strict(template: str | None, event: dict) -> str:
             text = payload_text(event)
         else:
             value = resolve_first(event, spec)
-            text = "" if value is None else str(value)
+            text = "" if value is None else _stringify(value)
         if text.strip():
             resolved += 1
         return text
