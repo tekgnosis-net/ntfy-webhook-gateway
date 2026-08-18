@@ -1,6 +1,8 @@
+import httpx
 import pytest
 
 from app import db as dbq
+from app.state import AppState
 
 
 @pytest.fixture
@@ -26,3 +28,9 @@ def sample_endpoint_data():
         "default_priority": "default",
         "tags": "webhook",
     }
+
+
+@pytest.fixture
+async def state(db):
+    async with httpx.AsyncClient() as client:
+        yield AppState(db, client, retry_delays=(0,))
