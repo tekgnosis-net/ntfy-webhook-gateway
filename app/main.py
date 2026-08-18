@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -48,21 +49,25 @@ async def retention_loop(state):
 async def run():
     config.data_dir().mkdir(parents=True, exist_ok=True)
     db = await dbq.connect(config.db_path())
-    await seed_legacy(db)
-    async with httpx.AsyncClient(timeout=15) as client:
-        state = AppState(db, client)
-        retention = asyncio.create_task(retention_loop(state))
-        hooks_server = uvicorn.Server(uvicorn.Config(
-            create_hooks_app(state), host="0.0.0.0", port=config.webhook_port(),
-            log_level="info"))
-        admin_server = uvicorn.Server(uvicorn.Config(
-            create_admin_app(state), host="0.0.0.0", port=config.admin_port(),
-            log_level="info"))
-        try:
-            await asyncio.gather(hooks_server.serve(), admin_server.serve())
-        finally:
-            retention.cancel()
-    await db.close()
+    try:
+        await seed_legacy(db)
+        async with httpx.AsyncClient(timeout=15) as client:
+            state = AppState(db, client)
+            retention = asyncio.create_task(retention_loop(state))
+            hooks_server = uvicorn.Server(uvicorn.Config(
+                create_hooks_app(state), host="0.0.0.0", port=config.webhook_port(),
+                log_level="info"))
+            admin_server = uvicorn.Server(uvicorn.Config(
+                create_admin_app(state), host="0.0.0.0", port=config.admin_port(),
+                log_level="info"))
+            try:
+                await asyncio.gather(hooks_server.serve(), admin_server.serve())
+            finally:
+                retention.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await retention
+    finally:
+        await db.close()
 
 
 if __name__ == "__main__":
