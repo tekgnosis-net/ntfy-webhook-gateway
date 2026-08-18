@@ -2762,7 +2762,7 @@ views.settings = async (root) => {
       <h2>${endpoint ? "Edit" : "New"} endpoint</h2>
       ${endpoint ? "" : `<label>Start from preset
         <select id="ep-preset"><option value="">—</option>
-        ${presets.map((p) => `<option value="${p.key}">${esc(p.label)}</option>`).join("")}
+        ${presets.map((p) => `<option value="${esc(p.key)}">${esc(p.label)}</option>`).join("")}
         </select></label>`}
       <form id="ep-form" class="grid">
         <label>Name <input name="name" required value="${esc(e.name)}"></label>
@@ -2811,6 +2811,10 @@ views.settings = async (root) => {
     });
     $("#rule-add", box).addEventListener("click", () =>
       $("#rule-rows", box).insertAdjacentHTML("beforeend", ruleRow()));
+    $("#rule-rows", box).closest("table").addEventListener("click", (event) => {
+      const del = event.target.closest(".rule-del");
+      if (del) del.closest("tr").remove();
+    });
     $("#ep-cancel", box).addEventListener("click", () => box.classList.add("hidden"));
 
     $("#ep-form", box).addEventListener("submit", async (event) => {
