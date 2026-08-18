@@ -19,9 +19,9 @@ PRESETS = [
     {
         "key": "omada",
         "label": "TP-Link Omada",
-        "description": "Reproduces the original Omada controller mapping (wrapped or flat payloads).",
-        "title_template": "Omada: {event.category|category} ({event.level|level})",
-        "message_template": "[{event.category|category}] {event.target|target}: {event.text|text}",
+        "description": "Maps Omada controller webhooks (modern description-style and legacy event payloads).",
+        "title_template": "Omada: {Site|event.category|category}",
+        "message_template": "{description|event.text|text}",
         "level_field": "event.level|level",
         "rules": {
             "WARN": _HIGH, "WARNING": _HIGH,

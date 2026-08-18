@@ -39,3 +39,28 @@ def render(template: str | None, event: dict) -> str:
         return "" if value is None else str(value)
 
     return _PLACEHOLDER.sub(substitute, template or "").strip()
+
+
+def render_strict(template: str | None, event: dict) -> str:
+    """Like render(), but a template whose placeholders ALL come up empty
+    renders as "" even when it contains literal text — so callers' fallbacks
+    fire instead of sending punctuation-only skeletons like "[] :".
+    Templates with no placeholders at all pass through unchanged."""
+    resolved = 0
+
+    def substitute(match: re.Match) -> str:
+        nonlocal resolved
+        spec = match.group(1)
+        if spec == "payload":
+            text = payload_text(event)
+        else:
+            value = resolve_first(event, spec)
+            text = "" if value is None else str(value)
+        if text.strip():
+            resolved += 1
+        return text
+
+    out = _PLACEHOLDER.sub(substitute, template or "").strip()
+    if _PLACEHOLDER.search(template or "") and not resolved:
+        return ""
+    return out

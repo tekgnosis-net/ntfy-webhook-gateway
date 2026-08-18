@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 
 from . import db as dbq
 from . import ntfy
-from .templating import payload_text, render, resolve_first
+from .templating import payload_text, render_strict, resolve_first
 
 MAX_BODY = 65536
 
@@ -26,8 +26,8 @@ def parse_events(raw: bytes) -> list[dict]:
 
 
 def build_notification(endpoint: dict, event: dict) -> dict:
-    title = render(endpoint["title_template"], event) or endpoint["name"]
-    message = (render(endpoint["message_template"], event) or payload_text(event))[:MAX_BODY]
+    title = render_strict(endpoint["title_template"], event) or endpoint["name"]
+    message = (render_strict(endpoint["message_template"], event) or payload_text(event))[:MAX_BODY]
     priority = endpoint["default_priority"] or "default"
     tags = [t.strip() for t in (endpoint["tags"] or "").split(",") if t.strip()]
     level = resolve_first(event, endpoint["level_field"]) if endpoint["level_field"] else None
@@ -88,6 +88,15 @@ def create_hooks_app(state) -> "FastAPI":
         if endpoint["secret"]:
             provided = request.query_params.get("secret") \
                 or request.headers.get("x-webhook-secret") or ""
+            if not provided:
+                # Omada's "Shard Secret" field travels in the JSON body.
+                try:
+                    data = json.loads(raw.decode("utf-8", errors="replace"))
+                    if isinstance(data, dict):
+                        provided = str(data.get("shardSecret")
+                                       or data.get("secret") or "")
+                except json.JSONDecodeError:
+                    pass
             if not secrets.compare_digest(provided, endpoint["secret"]):
                 await dbq.record_delivery(state.db, endpoint_id=endpoint["id"],
                                           status="rejected", source_ip=source_ip,
@@ -97,7 +106,9 @@ def create_hooks_app(state) -> "FastAPI":
         events = parse_events(raw)
         for event in events:
             state.spawn(dispatch_event(state, endpoint, event, source_ip, body_text))
-        return JSONResponse({"status": "accepted", "events": len(events)}, status_code=202)
+        # 200, not 202: some senders (e.g. Omada's webhook test) treat any
+        # non-200 as a failure even though dispatch is intentionally async.
+        return JSONResponse({"status": "accepted", "events": len(events)}, status_code=200)
 
     @app.post("/hooks/{slug}")
     async def hook(slug: str, request: Request):

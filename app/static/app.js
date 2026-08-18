@@ -37,6 +37,24 @@ function toast(message, isError = false) {
   toast._timer = setTimeout(() => box.classList.add("hidden"), 3500);
 }
 
+async function copyText(text) {
+  // navigator.clipboard only exists in secure contexts (HTTPS/localhost);
+  // the admin UI commonly runs on plain LAN HTTP, so fall back to execCommand.
+  if (navigator.clipboard && window.isSecureContext) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* fall through */ }
+  }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+  ta.remove();
+  return ok;
+}
+
 async function api(path, options = {}) {
   const opts = { credentials: "same-origin", ...options };
   if (opts.body !== undefined) {
@@ -335,8 +353,9 @@ views.settings = async (root) => {
     const btn = event.target.closest("button");
     if (!btn) return;
     if (btn.dataset.copy) {
-      await navigator.clipboard.writeText(btn.dataset.copy);
-      toast("Webhook URL copied");
+      const ok = await copyText(btn.dataset.copy);
+      toast(ok ? "Webhook URL copied"
+        : "Copy failed — select the URL and copy manually", !ok);
     } else if (btn.dataset.test) {
       btn.disabled = true;
       try {
