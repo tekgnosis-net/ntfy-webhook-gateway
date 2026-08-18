@@ -193,6 +193,15 @@ Validation via pydantic models; errors return structured JSON.
 `index.html` + `app.js` + `styles.css`, hash-routed tabs, `fetch()` against
 `/api`. No external assets — works offline.
 
+Timestamps are stored UTC; ALL display is local time. When the `TZ` env var is
+set (via .env/docker-compose) the UI renders every timestamp in that zone
+(surfaced as `display_timezone` on `/api/auth/status`) and, with tzdata in the
+image, container log timestamps follow it too; when unset, the UI uses each
+viewer's browser-local zone. Report buckets are computed server-side with a
+client-supplied `tz_offset` (minutes, `Date.getTimezoneOffset()` convention)
+so hour/day groupings match the displayed zone. Python never converts
+timezones — the browser does all rendering.
+
 - **Dashboard** — stat cards (endpoint count, deliveries and failures last
   24h), recent activity feed, per-endpoint health at a glance.
 - **Settings** — endpoint list; create/edit form with preset picker,

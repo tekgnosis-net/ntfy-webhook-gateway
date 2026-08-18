@@ -16,6 +16,7 @@
 - SPA has no build step and no external/CDN assets.
 - Ports: webhook `5000` (`WEBHOOK_PORT`), admin `5001` (`ADMIN_PORT`). DB at `${DATA_DIR:-/data}/gateway.db`, WAL mode.
 - All timestamps are UTC ISO-8601 strings from `app.db.utcnow()` (`timespec="seconds"`), so lexicographic comparison works in SQL.
+- Timestamps are STORED in UTC; ALL user-facing display converts in the browser. If the server has a `TZ` env var (set via .env/docker-compose), the SPA renders in that zone — surfaced as `display_timezone` on `GET /api/auth/status` — otherwise it uses the viewer's browser-local zone. Report buckets are computed with a client-supplied `tz_offset` (minutes, JS `Date.getTimezoneOffset()` convention) so hour/day groupings match the displayed zone. The Python side never converts timezones (no tzdata dependency).
 - The admin API NEVER returns a raw ntfy token — only `ntfy_token_set` (bool) and `ntfy_token_hint` (last 4 chars).
 - Request bodies stored in `deliveries` are truncated to 64 KB.
 - Retry behavior: initial send + up to 3 retries with delays 1s/5s/25s; 4xx responses are permanent (no retry). Tests inject tiny delays via `AppState.retry_delays`.
@@ -623,7 +624,7 @@ git commit -m "feat: sqlite layer with settings, endpoints, sessions"
   - `list_deliveries(db, endpoint_id=None, status=None, q=None, before_id=None, limit=50) -> list[dict]` (newest first; `q` substring-matches body/title/message/error; `before_id` pages backwards)
   - `get_delivery(db, delivery_id) -> dict | None`
   - `delivery_stats(db, since_iso) -> list[dict]` (rows `{endpoint_id, status, n}`)
-  - `delivery_buckets(db, since_iso, fmt) -> list[dict]` (rows `{bucket, status, n}`, `fmt` is an SQLite strftime format)
+  - `delivery_buckets(db, since_iso, fmt, offset_minutes=0) -> list[dict]` (rows `{bucket, status, n}`; `fmt` is an SQLite strftime format; `offset_minutes` follows JS `Date.getTimezoneOffset()` — minutes UTC is ahead of the display zone — and is applied as an SQLite datetime modifier so bucket labels come out in the display zone)
   - `last_delivery_times(db) -> dict[int, str]` (endpoint_id → max received_at)
   - `purge_deliveries(db, older_than_iso) -> int` (rows deleted)
 
@@ -679,6 +680,12 @@ async def test_stats_buckets_last_times(db, sample_endpoint_data):
     }
     buckets = await dbq.delivery_buckets(db, "2000-01-01T00:00:00+00:00", "%Y-%m-%d")
     assert sum(b["n"] for b in buckets) == 3
+    # display-zone bucketing: 23:00 UTC on Jan 1 is Jan 2 in UTC+2 (offset -120)
+    await db.execute("UPDATE deliveries SET received_at='2026-01-01T23:00:00+00:00'")
+    await db.commit()
+    local = await dbq.delivery_buckets(db, "2000-01-01T00:00:00+00:00", "%Y-%m-%d",
+                                       offset_minutes=-120)
+    assert {b["bucket"] for b in local} == {"2026-01-02"}
     assert ep["id"] in await dbq.last_delivery_times(db)
 
 
@@ -752,11 +759,14 @@ async def delivery_stats(db, since_iso) -> list[dict]:
     return [dict(r) for r in await cur.fetchall()]
 
 
-async def delivery_buckets(db, since_iso, fmt) -> list[dict]:
+async def delivery_buckets(db, since_iso, fmt, offset_minutes=0) -> list[dict]:
+    # offset_minutes follows JS Date.getTimezoneOffset(): minutes UTC is ahead
+    # of the display zone, so display time = UTC - offset.
+    modifier = f"{-offset_minutes} minutes"
     cur = await db.execute(
-        "SELECT strftime(?, received_at) AS bucket, status, COUNT(*) AS n"
+        "SELECT strftime(?, received_at, ?) AS bucket, status, COUNT(*) AS n"
         " FROM deliveries WHERE received_at>=? GROUP BY bucket, status ORDER BY bucket",
-        (fmt, since_iso),
+        (fmt, modifier, since_iso),
     )
     return [dict(r) for r in await cur.fetchall()]
 
@@ -1396,7 +1406,7 @@ git commit -m "feat: webhook receiver app with legacy omada alias"
 
 **Files:**
 - Create: `app/auth.py`, `app/api/__init__.py`, `app/api/auth_routes.py`
-- Modify: `tests/conftest.py` (add `admin_client` fixture)
+- Modify: `tests/conftest.py` (add `admin_client` fixture), `app/config.py` (add `display_timezone()`)
 - Test: `tests/test_auth.py`
 
 **Interfaces:**
@@ -1404,7 +1414,8 @@ git commit -m "feat: webhook receiver app with legacy omada alias"
 - Produces:
   - `app.auth`: `SESSION_COOKIE = "gateway_session"`, `SESSION_DAYS = 7`, `hash_password(str) -> str` (format `scrypt$<salt_hex>$<hash_hex>`), `verify_password(password, stored) -> bool`, `hash_token(str) -> str` (sha256 hex), `async auth_mode(db) -> "db" | "env" | "open"`, `async check_password(db, password) -> bool`, `async login(db, password) -> str | None` (session token), `async logout(db, token)`, `async is_authenticated(db, request) -> bool` (open mode → always True), `async change_password(db, current, new) -> bool`.
   - `app.api.create_admin_app(state) -> FastAPI`: builds `require_auth` dependency (401 with `{"detail": "authentication required"}`), includes routers, exposes `GET /api/health`, and mounts `app/static/` at `/` (html=True) when the directory exists. Later tasks add routers here.
-  - `app.api.auth_routes.router(state, require_auth) -> APIRouter` with `POST /api/login` (`{"password": ...}`, sets cookie, 401 on wrong password), `POST /api/logout`, `GET /api/auth/status` → `{"mode", "authenticated"}`, `POST /api/password` (`{"current", "new"}`, auth-protected, 422 if new < 8 chars, 403 if current wrong).
+  - `app.api.auth_routes.router(state, require_auth) -> APIRouter` with `POST /api/login` (`{"password": ...}`, sets cookie, 401 on wrong password), `POST /api/logout`, `GET /api/auth/status` → `{"mode", "authenticated", "display_timezone"}`, `POST /api/password` (`{"current", "new"}`, auth-protected, 422 if new < 8 chars, 403 if current wrong).
+  - `app.config.display_timezone() -> str | None`: the `TZ` env var (IANA name, set via .env/docker-compose) or None. Surfaced on `/api/auth/status` so the SPA can render all timestamps in that zone; None means browser-local display.
 
 - [ ] **Step 1: Add the admin_client fixture**
 
@@ -1448,18 +1459,26 @@ async def test_auth_mode_precedence(db, monkeypatch):
 
 async def test_open_mode_allows_api(admin_client, monkeypatch):
     monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
+    monkeypatch.delenv("TZ", raising=False)
     status = (await admin_client.get("/api/auth/status")).json()
-    assert status == {"mode": "open", "authenticated": True}
+    assert status == {"mode": "open", "authenticated": True, "display_timezone": None}
+
+
+async def test_display_timezone_from_env(admin_client, monkeypatch):
+    monkeypatch.setenv("TZ", "Australia/Sydney")
+    status = (await admin_client.get("/api/auth/status")).json()
+    assert status["display_timezone"] == "Australia/Sydney"
 
 
 async def test_login_flow(admin_client, monkeypatch):
     monkeypatch.setenv("ADMIN_PASSWORD", "envpass")
+    monkeypatch.delenv("TZ", raising=False)
     assert (await admin_client.post("/api/login", json={"password": "nope"})).status_code == 401
     response = await admin_client.post("/api/login", json={"password": "envpass"})
     assert response.status_code == 200
     assert auth.SESSION_COOKIE in response.cookies
     status = (await admin_client.get("/api/auth/status")).json()
-    assert status == {"mode": "env", "authenticated": True}
+    assert status == {"mode": "env", "authenticated": True, "display_timezone": None}
     await admin_client.post("/api/logout")
     status = (await admin_client.get("/api/auth/status")).json()
     assert status["authenticated"] is False
@@ -1490,6 +1509,14 @@ Run: `pytest tests/test_auth.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'app.auth'`
 
 - [ ] **Step 4: Write minimal implementation**
+
+Append to `app/config.py`:
+```python
+def display_timezone() -> str | None:
+    # IANA zone from the TZ env var (.env/docker-compose). None -> the SPA
+    # falls back to each viewer's browser-local zone.
+    return os.environ.get("TZ") or None
+```
 
 `app/auth.py`:
 ```python
@@ -1607,6 +1634,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from .. import auth
+from ..config import display_timezone
 
 
 class LoginIn(BaseModel):
@@ -1641,7 +1669,8 @@ def router(state, require_auth) -> APIRouter:
     @r.get("/auth/status")
     async def status(request: Request):
         return {"mode": await auth.auth_mode(state.db),
-                "authenticated": await auth.is_authenticated(state.db, request)}
+                "authenticated": await auth.is_authenticated(state.db, request),
+                "display_timezone": display_timezone()}
 
     @r.post("/password", dependencies=[Depends(require_auth)])
     async def change_password(body: PasswordChangeIn):
@@ -1944,7 +1973,7 @@ git commit -m "feat: endpoints, presets, and settings admin API with token maski
 - Produces (auth-protected under `/api`):
   - `GET /api/logs?endpoint_id&status&q&before_id&limit` (limit ≤ 200, default 50) → `{"items": [{id, received_at, endpoint_id, endpoint_name, status, title, ntfy_status, attempts, duration_ms}]}`
   - `GET /api/logs/{id}` → full delivery row (incl. `request_body`, `message`, `source_ip`, `error`); 404 unknown.
-  - `GET /api/reports/summary?range=24h|7d|30d` (default 7d; 422 otherwise) → `{"range", "since", "endpoints": [{id, name, delivered, failed, rejected, total, success_rate}], "buckets": [{bucket, delivered, failed, rejected}]}`. Bucket format: hourly `%Y-%m-%dT%H:00` for 24h, daily `%Y-%m-%d` otherwise. `success_rate` = round(100*delivered/total, 1) or null when total 0.
+  - `GET /api/reports/summary?range=24h|7d|30d&tz_offset=<minutes>` (range default 7d, 422 otherwise; `tz_offset` default 0, JS `Date.getTimezoneOffset()` convention, passed through to `delivery_buckets` so bucket labels come out in the display zone) → `{"range", "since", "endpoints": [{id, name, delivered, failed, rejected, total, success_rate}], "buckets": [{bucket, delivered, failed, rejected}]}`. Bucket format: hourly `%Y-%m-%dT%H:00` for 24h, daily `%Y-%m-%d` otherwise. `success_rate` = round(100*delivered/total, 1) or null when total 0.
   - `GET /api/dashboard` → `{"endpoint_count", "enabled_count", "deliveries_24h", "failures_24h", "endpoints": [{id, name, enabled, delivered, failed, rejected, last_at}], "recent": [same shape as logs items, 10 rows]}` (per-endpoint counts are 24h; `failures_24h` counts failed + rejected).
 
 - [ ] **Step 1: Write the failing test**
@@ -2049,7 +2078,7 @@ def router(state, require_auth) -> APIRouter:
         return row
 
     @r.get("/reports/summary")
-    async def summary(range: str = "7d"):
+    async def summary(range: str = "7d", tz_offset: int = 0):
         delta = RANGES.get(range)
         if delta is None:
             raise HTTPException(status_code=422, detail="range must be one of 24h, 7d, 30d")
@@ -2067,7 +2096,8 @@ def router(state, require_auth) -> APIRouter:
                               "success_rate": round(100 * agg["delivered"] / total, 1) if total else None})
         fmt = "%Y-%m-%dT%H:00" if range == "24h" else "%Y-%m-%d"
         buckets = {}
-        for row in await dbq.delivery_buckets(state.db, since, fmt):
+        for row in await dbq.delivery_buckets(state.db, since, fmt,
+                                              offset_minutes=tz_offset):
             b = buckets.setdefault(row["bucket"], {"bucket": row["bucket"],
                                                    "delivered": 0, "failed": 0, "rejected": 0})
             b[row["status"]] = row["n"]
@@ -2470,7 +2500,28 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g,
   (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-const fmtTime = (iso) => iso ? new Date(iso).toLocaleString() : "—";
+let displayTz = null;  // IANA zone from the server's TZ env; null = browser-local
+
+const fmtTime = (iso) => {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString(undefined, displayTz ? { timeZone: displayTz } : {});
+  } catch (e) {
+    return new Date(iso).toLocaleString();  // unknown zone name: browser-local fallback
+  }
+};
+
+function tzOffsetMinutes() {
+  // Same convention as Date.getTimezoneOffset(): minutes UTC is ahead of display time.
+  if (!displayTz) return new Date().getTimezoneOffset();
+  const now = new Date();
+  try {
+    const inZone = new Date(now.toLocaleString("en-US", { timeZone: displayTz }));
+    return Math.round((now - inZone) / 60000);
+  } catch (e) {
+    return new Date().getTimezoneOffset();
+  }
+}
 
 function toast(message, isError = false) {
   const box = $("#toast");
@@ -2527,6 +2578,7 @@ $("#logout").addEventListener("click", async () => {
 async function refreshAuthUi() {
   const status = await fetch("/api/auth/status", { credentials: "same-origin" })
     .then((r) => r.json());
+  displayTz = status.display_timezone || null;
   $("#banner").classList.toggle("hidden", status.mode !== "open");
   $("#logout").classList.toggle("hidden", status.mode === "open");
   if (status.mode !== "open" && !status.authenticated) {
@@ -2898,7 +2950,7 @@ views.reports = async (root) => {
   const page = $("#reports-page");
 
   async function load() {
-    const summary = await api(`/api/reports/summary?range=${range}`);
+    const summary = await api(`/api/reports/summary?range=${range}&tz_offset=${tzOffsetMinutes()}`);
     const max = Math.max(...summary.buckets.map((b) => b.delivered + b.failed + b.rejected), 1);
     $("#report-body", page).innerHTML = `
       ${summary.buckets.length ? `<div class="chart">${summary.buckets.map((b) => {
@@ -3144,6 +3196,11 @@ git commit -m "feat: password reset script for lockout recovery"
 ```dockerfile
 FROM python:3.12-slim
 
+# tzdata lets the TZ env var (from .env) govern container log timestamps
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /srv
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -3212,6 +3269,11 @@ volumes:
 # Listener ports (defaults shown)
 #WEBHOOK_PORT=5000
 #ADMIN_PORT=5001
+
+# Display timezone (IANA name). Sets the zone the admin UI renders timestamps
+# in and the container's log timestamps. Unset = each viewer's browser-local
+# time in the UI, UTC in container logs. Storage is always UTC.
+#TZ=Australia/Sydney
 ```
 
 - [ ] **Step 5: Build and smoke-test (skip gracefully if docker is unavailable)**
@@ -3350,11 +3412,11 @@ Then: a "Ports" table (5000 webhooks/public, 5001 admin/LAN-only with one senten
 
 - [ ] **Step 2: Write `docs/install.md`**
 
-Cover: prerequisites (Docker + compose, an ntfy server with an access token); install from ghcr image (compose file above, `docker compose pull && up -d`); build from source (`git clone`, `docker compose up -d --build`); `.env` reference — a table of ADMIN_PASSWORD / NTFY_HOST_URL / NTFY_TOPIC / NTFY_AUTH_TOKEN / WEBHOOK_PORT / ADMIN_PORT with the semantics from `.env.example`, including that legacy vars only act on first start with an empty database; data volume & backup (`gateway-data` volume, everything lives in `/data/gateway.db`, back up by `docker run --rm -v gateway-data:/data alpine tar cz -C /data . > backup.tar.gz`); reverse-proxy exposure — explicit CloudPanel guidance: create a site/proxy that forwards ONLY to port 5000, never proxy 5001; the admin UI is reached directly on the LAN; upgrading from the old omada-only proxy (keep your old `.env`, first start seeds the `omada` endpoint, controller URL `/omada-webhook` unchanged).
+Cover: prerequisites (Docker + compose, an ntfy server with an access token); install from ghcr image (compose file above, `docker compose pull && up -d`); build from source (`git clone`, `docker compose up -d --build`); `.env` reference — a table of ADMIN_PASSWORD / NTFY_HOST_URL / NTFY_TOPIC / NTFY_AUTH_TOKEN / WEBHOOK_PORT / ADMIN_PORT / TZ with the semantics from `.env.example`, including that legacy vars only act on first start with an empty database and that TZ sets the UI display zone + container log zone while storage stays UTC (unset TZ = browser-local UI display); data volume & backup (`gateway-data` volume, everything lives in `/data/gateway.db`, back up by `docker run --rm -v gateway-data:/data alpine tar cz -C /data . > backup.tar.gz`); reverse-proxy exposure — explicit CloudPanel guidance: create a site/proxy that forwards ONLY to port 5000, never proxy 5001; the admin UI is reached directly on the LAN; upgrading from the old omada-only proxy (keep your old `.env`, first start seeds the `omada` endpoint, controller URL `/omada-webhook` unchanged).
 
 - [ ] **Step 3: Write `docs/operations.md`**
 
-Cover: creating an endpoint (slug→URL relationship, presets, copy-URL button); template syntax — placeholders `{a.b.c}`, alternatives `{event.text|text}`, `{payload}`, missing→empty, empty title→endpoint name, empty message→pretty payload; level rules (level_field, uppercase matching, priority + extra_tags, default_priority); testing (Test button and a curl example); Logs tab (filters, detail drawer contents, auto-refresh, `rejected` meaning disabled-endpoint hits); Reports tab (ranges, success rate definition); retention setting; password management — precedence chain (DB > env > open + warning banner), change in Settings, lockout recovery:
+Cover: creating an endpoint (slug→URL relationship, presets, copy-URL button); timestamp display (stored UTC; UI renders in the `TZ` env zone when set, else browser-local; report buckets follow the same zone); template syntax — placeholders `{a.b.c}`, alternatives `{event.text|text}`, `{payload}`, missing→empty, empty title→endpoint name, empty message→pretty payload; level rules (level_field, uppercase matching, priority + extra_tags, default_priority); testing (Test button and a curl example); Logs tab (filters, detail drawer contents, auto-refresh, `rejected` meaning disabled-endpoint hits); Reports tab (ranges, success rate definition); retention setting; password management — precedence chain (DB > env > open + warning banner), change in Settings, lockout recovery:
 
 ````markdown
 ```bash
