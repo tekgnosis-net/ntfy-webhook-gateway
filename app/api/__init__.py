@@ -17,8 +17,10 @@ def create_admin_app(state) -> FastAPI:
     async def health():
         return {"status": "ok"}
 
-    from . import auth_routes
+    from . import auth_routes, endpoints_routes, settings_routes
     app.include_router(auth_routes.router(state, require_auth))
+    app.include_router(endpoints_routes.router(state, require_auth))
+    app.include_router(settings_routes.router(state, require_auth))
 
     static_dir = Path(__file__).resolve().parent.parent / "static"
     if static_dir.exists():
