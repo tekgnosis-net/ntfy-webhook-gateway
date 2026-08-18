@@ -43,3 +43,11 @@ async def hooks_client(state):
     transport = ASGITransport(app=create_hooks_app(state))
     async with httpx.AsyncClient(transport=transport, base_url="http://hooks") as c:
         yield c
+
+
+@pytest.fixture
+async def admin_client(state):
+    from app.api import create_admin_app
+    transport = ASGITransport(app=create_admin_app(state))
+    async with httpx.AsyncClient(transport=transport, base_url="http://admin") as c:
+        yield c

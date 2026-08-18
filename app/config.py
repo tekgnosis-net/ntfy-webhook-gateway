@@ -34,3 +34,9 @@ def legacy_env() -> dict | None:
         "topic": topic,
         "token": token,
     }
+
+
+def display_timezone() -> str | None:
+    # IANA zone from the TZ env var (.env/docker-compose). None -> the SPA
+    # falls back to each viewer's browser-local zone.
+    return os.environ.get("TZ") or None
