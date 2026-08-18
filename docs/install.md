@@ -12,11 +12,11 @@ Create a directory for the deployment, fetch the compose file, and start it:
 
 ```bash
 mkdir ntfy-webhook-gateway && cd ntfy-webhook-gateway
-curl -LO https://raw.githubusercontent.com/tekgnosis-net/ntfy-webhook-helper/main/docker-compose.yml
+curl -LO https://raw.githubusercontent.com/tekgnosis-net/ntfy-webhook-gateway/main/docker-compose.yml
 docker compose up -d
 ```
 
-This pulls `ghcr.io/tekgnosis-net/ntfy-webhook-helper:latest` and starts a
+This pulls `ghcr.io/tekgnosis-net/ntfy-webhook-gateway:latest` and starts a
 container named `ntfy-webhook-gateway` with a persistent `gateway-data`
 volume. To update later:
 
@@ -33,8 +33,8 @@ from the admin UI, except the two listener ports.
 ## Build from source
 
 ```bash
-git clone https://github.com/tekgnosis-net/ntfy-webhook-helper.git
-cd ntfy-webhook-helper
+git clone https://github.com/tekgnosis-net/ntfy-webhook-gateway.git
+cd ntfy-webhook-gateway
 docker compose up -d --build
 ```
 

@@ -1,7 +1,7 @@
 services:
   ntfy-webhook-gateway:
     build: .
-    image: ghcr.io/tekgnosis-net/ntfy-webhook-helper:latest
+    image: ghcr.io/tekgnosis-net/ntfy-webhook-gateway:latest
     container_name: ntfy-webhook-gateway
     restart: unless-stopped
     ports:

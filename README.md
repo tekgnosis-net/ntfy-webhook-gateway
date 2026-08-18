@@ -29,7 +29,7 @@ templates, log history, and delivery reports.
 
 ```bash
 mkdir ntfy-webhook-gateway && cd ntfy-webhook-gateway
-curl -LO https://raw.githubusercontent.com/tekgnosis-net/ntfy-webhook-helper/main/docker-compose.yml
+curl -LO https://raw.githubusercontent.com/tekgnosis-net/ntfy-webhook-gateway/main/docker-compose.yml
 docker compose up -d
 ```
 
