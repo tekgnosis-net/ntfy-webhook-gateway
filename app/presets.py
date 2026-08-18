@@ -20,8 +20,8 @@ PRESETS = [
         "key": "omada",
         "label": "TP-Link Omada",
         "description": "Maps Omada controller webhooks (modern description-style and legacy event payloads).",
-        "title_template": "Omada: {Site|event.category|category}",
-        "message_template": "{description|event.text|text}",
+        "title_template": "Omada: {Site|Controller|event.category|category}",
+        "message_template": "{text|event.text|description}",
         "level_field": "event.level|level",
         "rules": {
             "WARN": _HIGH, "WARNING": _HIGH,

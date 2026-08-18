@@ -63,7 +63,7 @@ Title and message templates are plain text with `{...}` placeholders:
   notification.
 
 A placeholder that resolves to a **list** renders one item per line
-(Omada's legacy `text` field, for example, is a list of event lines).
+(Omada's `text` field, for example, is a list of event lines).
 
 Any placeholder whose path doesn't resolve renders as empty text — it
 never causes an error. Fallbacks are strict about templates that come up
@@ -170,8 +170,8 @@ One thing that does NOT auto-migrate: **stored endpoint templates**. Presets
 only pre-fill templates at creation time, so when an upgrade improves a
 built-in preset, existing endpoints keep the template strings they were
 saved with. To adopt an improved mapping, edit the endpoint's templates by
-hand (the current Omada preset uses title `Omada: {Site|event.category|category}`
-and message `{description|event.text|text}`) or delete and recreate the
+hand (the current Omada preset uses title `Omada: {Site|Controller|event.category|category}`
+and message `{text|event.text|description}`) or delete and recreate the
 endpoint from the preset.
 
 ## Troubleshooting

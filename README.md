@@ -43,9 +43,9 @@ Omada controller webhook** alerts (OC200/OC300/software controller) into
 proxy grew into the generic **webhook-to-ntfy gateway** you see here — but
 Omada support remains first-class:
 
-- A built-in **Omada preset** maps the controller's webhook payloads (modern
-  `description`-style and legacy `event`/`text` formats) to clean
-  notifications, with log-level → priority rules.
+- A built-in **Omada preset** maps the controller's webhook payloads (the
+  `text` event lines with `description` fallback, plus legacy `event.*`
+  formats) to clean notifications, with log-level → priority rules.
 - Omada's native **Shard Secret** works out of the box: the gateway accepts
   the shared secret from the JSON body (`shardSecret`), a `?secret=` URL
   parameter, or an `X-Webhook-Secret` header.
