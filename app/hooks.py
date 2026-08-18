@@ -1,6 +1,9 @@
 import json
 import time
 
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
 from . import db as dbq
 from . import ntfy
 from .templating import payload_text, render, resolve_first
@@ -57,3 +60,39 @@ async def dispatch_event(state, endpoint, event, source_ip, request_body) -> dic
     )
     return {"status": status, "ntfy_status": result.status_code, "error": result.error,
             "attempts": result.attempts, "delivery_id": delivery_id}
+
+
+def create_hooks_app(state) -> "FastAPI":
+    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok"}
+
+    async def receive(slug: str, request: Request) -> JSONResponse:
+        endpoint = await dbq.get_endpoint_by_slug(state.db, slug)
+        if endpoint is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        raw = await request.body()
+        body_text = raw.decode("utf-8", errors="replace")[:MAX_BODY]
+        source_ip = request.client.host if request.client else ""
+        if not endpoint["enabled"]:
+            await dbq.record_delivery(state.db, endpoint_id=endpoint["id"],
+                                      status="rejected", source_ip=source_ip,
+                                      request_body=body_text, error="endpoint disabled")
+            return JSONResponse({"error": "not found"}, status_code=404)
+        events = parse_events(raw)
+        for event in events:
+            state.spawn(dispatch_event(state, endpoint, event, source_ip, body_text))
+        return JSONResponse({"status": "accepted", "events": len(events)}, status_code=202)
+
+    @app.post("/hooks/{slug}")
+    async def hook(slug: str, request: Request):
+        return await receive(slug, request)
+
+    @app.post("/omada-webhook")
+    async def legacy(request: Request):
+        # Pre-gateway deployments point the Omada controller here.
+        return await receive("omada", request)
+
+    return app

@@ -1,5 +1,6 @@
 import httpx
 import pytest
+from httpx import ASGITransport
 
 from app import db as dbq
 from app.state import AppState
@@ -34,3 +35,11 @@ def sample_endpoint_data():
 async def state(db):
     async with httpx.AsyncClient() as client:
         yield AppState(db, client, retry_delays=(0,))
+
+
+@pytest.fixture
+async def hooks_client(state):
+    from app.hooks import create_hooks_app
+    transport = ASGITransport(app=create_hooks_app(state))
+    async with httpx.AsyncClient(transport=transport, base_url="http://hooks") as c:
+        yield c
