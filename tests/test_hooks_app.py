@@ -21,7 +21,7 @@ async def test_accepts_and_dispatches(hooks_client, state, sample_endpoint_data)
     respx.post("https://ntfy.example.com/alerts").mock(return_value=httpx.Response(200))
     response = await hooks_client.post("/hooks/test-hook",
                                        json=[{"level": "WARN", "msg": "a"}, {"msg": "b"}])
-    assert response.status_code == 202
+    assert response.status_code == 200
     assert response.json() == {"status": "accepted", "events": 2}
     await state.drain()
     rows = await dbq.list_deliveries(state.db)
@@ -33,7 +33,7 @@ async def test_non_json_body_accepted(hooks_client, state, sample_endpoint_data)
     await dbq.create_endpoint(state.db, sample_endpoint_data)
     respx.post("https://ntfy.example.com/alerts").mock(return_value=httpx.Response(200))
     response = await hooks_client.post("/hooks/test-hook", content=b"plain alert")
-    assert response.status_code == 202
+    assert response.status_code == 200
     await state.drain()
     row = (await dbq.list_deliveries(state.db))[0]
     assert row["message"] == "plain alert"
@@ -52,7 +52,7 @@ async def test_legacy_alias_routes_to_omada_slug(hooks_client, state, sample_end
     await dbq.create_endpoint(state.db, {**sample_endpoint_data, "slug": "omada"})
     respx.post("https://ntfy.example.com/alerts").mock(return_value=httpx.Response(200))
     response = await hooks_client.post("/omada-webhook", json={"level": "WARN", "msg": "x"})
-    assert response.status_code == 202
+    assert response.status_code == 200
     await state.drain()
     assert len(await dbq.list_deliveries(state.db)) == 1
 
@@ -82,10 +82,33 @@ async def test_secret_correct_query_param_accepted(hooks_client, state, sample_e
     await dbq.create_endpoint(state.db, {**sample_endpoint_data, "secret": "s3cret-value"})
     respx.post("https://ntfy.example.com/alerts").mock(return_value=httpx.Response(200))
     response = await hooks_client.post("/hooks/test-hook?secret=s3cret-value", json={"a": 1})
-    assert response.status_code == 202
+    assert response.status_code == 200
     await state.drain()
     rows = await dbq.list_deliveries(state.db)
     assert len(rows) == 1 and rows[0]["status"] == "delivered"
+
+
+@respx.mock
+async def test_secret_in_body_shard_secret_accepted(hooks_client, state, sample_endpoint_data):
+    # Omada's "Shard Secret" field arrives inside the JSON body.
+    await dbq.create_endpoint(state.db, {**sample_endpoint_data, "secret": "s3cret-value"})
+    respx.post("https://ntfy.example.com/alerts").mock(return_value=httpx.Response(200))
+    response = await hooks_client.post(
+        "/hooks/test-hook",
+        json={"description": "test", "shardSecret": "s3cret-value"})
+    assert response.status_code == 200
+    await state.drain()
+    rows = await dbq.list_deliveries(state.db)
+    assert len(rows) == 1 and rows[0]["status"] == "delivered"
+
+
+async def test_secret_in_body_wrong_rejected(hooks_client, state, sample_endpoint_data):
+    await dbq.create_endpoint(state.db, {**sample_endpoint_data, "secret": "s3cret-value"})
+    response = await hooks_client.post("/hooks/test-hook",
+                                       json={"shardSecret": "nope"})
+    assert response.status_code == 404
+    rows = await dbq.list_deliveries(state.db)
+    assert len(rows) == 1 and rows[0]["status"] == "rejected"
 
 
 @respx.mock
@@ -94,7 +117,7 @@ async def test_secret_correct_header_accepted(hooks_client, state, sample_endpoi
     respx.post("https://ntfy.example.com/alerts").mock(return_value=httpx.Response(200))
     response = await hooks_client.post("/hooks/test-hook", json={"a": 1},
                                        headers={"X-Webhook-Secret": "s3cret-value"})
-    assert response.status_code == 202
+    assert response.status_code == 200
     await state.drain()
     rows = await dbq.list_deliveries(state.db)
     assert len(rows) == 1 and rows[0]["status"] == "delivered"

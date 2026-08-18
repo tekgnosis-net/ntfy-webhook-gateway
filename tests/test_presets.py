@@ -16,12 +16,17 @@ def test_get_preset_returns_copy():
     assert get_preset("nope") is None
 
 
-def test_omada_preset_handles_both_payload_shapes():
+def test_omada_preset_handles_all_payload_shapes():
     omada = get_preset("omada")
     wrapped = {"event": {"category": "Device", "target": "AP1", "text": "went down", "level": "WARN"}}
     flat = {"category": "Device", "target": "AP1", "text": "went down", "level": "WARN"}
+    modern = {"Site": "Default", "description": "AP1 was disconnected",
+              "Controller": "OC200", "timestamp": 1765948831000}
     for payload in (wrapped, flat):
-        assert render(omada["message_template"], payload) == "[Device] AP1: went down"
+        assert render(omada["message_template"], payload) == "went down"
+        assert render(omada["title_template"], payload) == "Omada: Device"
         assert resolve_first(payload, omada["level_field"]) == "WARN"
+    assert render(omada["message_template"], modern) == "AP1 was disconnected"
+    assert render(omada["title_template"], modern) == "Omada: Default"
     assert "WARN" in omada["rules"]
     assert omada["rules"]["ERROR"]["priority"] == "urgent"

@@ -135,7 +135,8 @@ write-only masking for `secret`.
 
 1. `POST /hooks/{slug}` → look up enabled endpoint; unknown or disabled → 404.
 2. If the endpoint has a `secret` set, require it on the request (as
-   `?secret=...` or an `X-Webhook-Secret` header) — compared with
+   `?secret=...`, an `X-Webhook-Secret` header, or a `shardSecret`/`secret`
+   field in the JSON body — Omada's native Shard Secret) — compared with
    `secrets.compare_digest`; missing or wrong → same 404 as an unknown slug
    (no information leak), logged as a `rejected` delivery. An empty secret
    skips this check entirely, preserving legacy no-auth behavior.
@@ -143,7 +144,7 @@ write-only masking for `secret`.
    non-JSON → wrapped as `{"body": "<raw text>"}` so `{body}` resolves
    normally. The special placeholder `{payload}` renders the whole event
    pretty-printed (works for both JSON and raw-text events).
-4. Respond **202 immediately**; dispatch continues in a background task.
+4. Respond **200 immediately**; dispatch continues in a background task.
    Rationale: webhook senders have short timeouts and aggressive retry loops —
    acking fast prevents duplicate storms and decouples the sender's timeout
    budget from ntfy's availability.

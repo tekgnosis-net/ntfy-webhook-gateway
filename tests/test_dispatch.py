@@ -59,6 +59,28 @@ async def test_dispatch_without_server_fails(state, sample_endpoint_data):
     assert "no ntfy server" in outcome["error"]
 
 
+def test_build_notification_falls_back_when_only_literals_survive(sample_endpoint_data):
+    # A template whose placeholders ALL come up empty must not send a
+    # punctuation-only skeleton like "[] :" — the payload fallback fires,
+    # and the title falls back to the endpoint name.
+    endpoint = {**sample_endpoint_data, "id": 1,
+                "title_template": "Omada: {event.category|category} ({event.level|level})",
+                "message_template": "[{event.category|category}] {event.target|target}: {event.text|text}"}
+    event = {"description": "This is a webhook test message", "shardSecret": "x"}
+    notif = build_notification(endpoint, event)
+    assert notif["title"] == "Test Hook"
+    assert "webhook test message" in notif["message"]
+    assert "[]" not in notif["message"]
+
+
+def test_build_notification_keeps_pure_literal_templates(sample_endpoint_data):
+    # A template with no placeholders at all is intentional static text.
+    endpoint = {**sample_endpoint_data, "id": 1,
+                "title_template": "Static Title", "message_template": "static body"}
+    notif = build_notification(endpoint, {"a": 1})
+    assert notif["title"] == "Static Title" and notif["message"] == "static body"
+
+
 def test_build_notification_truncates_oversized_message(sample_endpoint_data):
     # message_template renders empty -> falls back to pretty-printed payload,
     # which must be truncated to MAX_BODY regardless of which branch produced it.

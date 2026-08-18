@@ -22,7 +22,9 @@ An endpoint can optionally require a shared secret on incoming webhook
 requests. Leave it empty (the default) and the endpoint accepts any request
 for its slug, exactly like before this feature existed. Set one and every
 POST must present it, either as a `?secret=...` query parameter or an
-`X-Webhook-Secret` header — pick whichever the sending service supports; a
+`X-Webhook-Secret` header, or a `shardSecret` (or `secret`) field in the JSON
+body — the last one matches Omada's built-in "Shard Secret" setting, so you
+can paste the generated secret straight into the Omada webhook config; a
 request with a missing or wrong secret gets the same `404` as an unknown
 slug, and is logged as `rejected`. The editor's **Generate** button fills the
 field with 32 random URL-safe characters if you'd rather not make one up.
@@ -90,7 +92,7 @@ curl -X POST http://<host>:5000/hooks/<slug> \
   -d '{"level": "WARN", "text": "test message"}'
 ```
 
-The webhook responds `202 Accepted` immediately with the number of events
+The webhook responds `200 OK` immediately with the number of events
 it queued; check the Logs tab a moment later to see how it was actually
 delivered.
 
@@ -161,5 +163,5 @@ require a manual migration step — just pull the new image and restart.
 | Symptom | Check |
 |---|---|
 | Webhook POST returns 404 | Confirm the slug in the URL matches an existing endpoint exactly, and that the endpoint is enabled — a disabled endpoint also returns 404 (logged as `rejected`). |
-| Webhook accepted (202) but no notification arrives | Open the delivery's detail in the Logs tab for the error message; confirm the ntfy token is correct and not expired, and that the ntfy server URL (global or per-endpoint override) is reachable from the container. |
+| Webhook accepted (200) but no notification arrives | Open the delivery's detail in the Logs tab for the error message; confirm the ntfy token is correct and not expired, and that the ntfy server URL (global or per-endpoint override) is reachable from the container. |
 | Admin UI unreachable | Confirm port 5001 is actually exposed/reachable from where you're connecting — remember it's meant to be LAN-only and is deliberately not proxied publicly. |
