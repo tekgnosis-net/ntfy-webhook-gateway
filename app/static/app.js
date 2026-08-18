@@ -140,7 +140,7 @@ views.dashboard = async (root) => {
       <table><thead><tr><th>Time</th><th>Endpoint</th><th>Status</th><th>Title</th></tr></thead>
       <tbody>${data.recent.map((d) => `
         <tr><td>${fmtTime(d.received_at)}</td><td>${esc(d.endpoint_name)}</td>
-        <td><span class="badge ${d.status}">${d.status}</span></td>
+        <td><span class="badge ${esc(d.status)}">${esc(d.status)}</span></td>
         <td>${esc(d.title)}</td></tr>`).join("")
         || "<tr><td colspan='4' class='muted'>Nothing yet.</td></tr>"}
       </tbody></table>
