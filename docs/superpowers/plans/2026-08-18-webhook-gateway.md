@@ -2635,7 +2635,7 @@ views.dashboard = async (root) => {
       <table><thead><tr><th>Time</th><th>Endpoint</th><th>Status</th><th>Title</th></tr></thead>
       <tbody>${data.recent.map((d) => `
         <tr><td>${fmtTime(d.received_at)}</td><td>${esc(d.endpoint_name)}</td>
-        <td><span class="badge ${d.status}">${d.status}</span></td>
+        <td><span class="badge ${esc(d.status)}">${esc(d.status)}</span></td>
         <td>${esc(d.title)}</td></tr>`).join("")
         || "<tr><td colspan='4' class='muted'>Nothing yet.</td></tr>"}
       </tbody></table>
@@ -3019,7 +3019,7 @@ views.logs = async (root) => {
     $("#log-rows", page).innerHTML = items.map((d) => `
       <tr data-id="${d.id}" class="clickable">
         <td>${fmtTime(d.received_at)}</td><td>${esc(d.endpoint_name)}</td>
-        <td><span class="badge ${d.status}">${d.status}</span></td>
+        <td><span class="badge ${esc(d.status)}">${esc(d.status)}</span></td>
         <td>${esc(d.title)}</td><td>${d.ntfy_status ?? "—"}</td>
         <td>${d.attempts}</td><td>${d.duration_ms}</td></tr>`).join("")
       || "<tr><td colspan='7' class='muted'>No deliveries match.</td></tr>";
@@ -3042,7 +3042,7 @@ views.logs = async (root) => {
     box.classList.remove("hidden");
     box.innerHTML = `
       <h2>Delivery #${detail.id}</h2>
-      <p><span class="badge ${detail.status}">${detail.status}</span>
+      <p><span class="badge ${esc(detail.status)}">${esc(detail.status)}</span>
         ${fmtTime(detail.received_at)} · from ${esc(detail.source_ip) || "unknown"}
         · ${detail.attempts} attempt(s) · ${detail.duration_ms} ms
         ${detail.ntfy_status ? `· ntfy HTTP ${detail.ntfy_status}` : ""}</p>
