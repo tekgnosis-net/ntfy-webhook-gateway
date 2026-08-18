@@ -25,6 +25,37 @@ templates, log history, and delivery reports.
 - **Multi-arch container image** — published to GitHub Container Registry
   for `linux/amd64` and `linux/arm64`.
 
+## Screenshots
+
+![ntfy webhook gateway dashboard — endpoints, deliveries, and failures at a glance](docs/screenshots/dashboard.png)
+
+| Endpoint settings with presets and shared secrets | Delivery logs with per-attempt detail |
+|---|---|
+| ![Webhook endpoint settings: slug, ntfy topic and token, shared secret, templates](docs/screenshots/settings.png) | ![Webhook delivery log: status, ntfy response, rendered notification, received payload](docs/screenshots/logs.png) |
+
+![Delivery reports: success rate and volume per webhook endpoint](docs/screenshots/reports.png)
+
+## Origin: from Omada webhook to generic gateway
+
+This project started as a ~60-line Flask proxy with one job: turn **TP-Link
+Omada controller webhook** alerts (OC200/OC300/software controller) into
+**ntfy push notifications** on a self-hosted ntfy server. That single-purpose
+proxy grew into the generic **webhook-to-ntfy gateway** you see here — but
+Omada support remains first-class:
+
+- A built-in **Omada preset** maps the controller's webhook payloads (modern
+  `description`-style and legacy `event`/`text` formats) to clean
+  notifications, with log-level → priority rules.
+- Omada's native **Shard Secret** works out of the box: the gateway accepts
+  the shared secret from the JSON body (`shardSecret`), a `?secret=` URL
+  parameter, or an `X-Webhook-Secret` header.
+- The legacy `/omada-webhook` path still works, and webhook responses are
+  `200 OK` so the controller's built-in webhook test reports success.
+
+If you found this repo searching for a way to get Omada alerts into ntfy:
+that's exactly where it began — and it now handles Uptime Kuma, Proxmox,
+CI pipelines, cron jobs, and anything else that can POST a webhook, too.
+
 ## Quick start
 
 ```bash
