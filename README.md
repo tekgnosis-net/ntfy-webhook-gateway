@@ -64,3 +64,8 @@ DATA_DIR=/tmp/gw python -m app.main
 
 The last command runs both listeners locally (webhook on `:5000`, admin UI
 on `:5001`) against a throwaway SQLite database in `/tmp/gw`.
+
+## License
+
+This project is licensed under the GNU Affero General Public License v3.0
+(AGPL-3.0) — see [LICENSE](LICENSE) for the full text.
