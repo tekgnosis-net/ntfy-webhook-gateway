@@ -24,7 +24,12 @@ Module map (`app/`):
 - `ntfy.py` — `send()`: POSTs one notification to an ntfy server with
   retries.
 - `templating.py` — `{a.b.c}` / `{a|b}` / `{payload}` placeholder
-  rendering over a JSON event.
+  rendering over a JSON event. `build_notification` uses `render_strict`:
+  a template whose placeholders ALL resolve empty renders as "" (so the
+  name/payload fallbacks fire instead of punctuation-only skeletons), list
+  values render one item per line, and `payload_text` redacts
+  `shardSecret`/`secret` keys so a webhook's credential never lands in a
+  notification body.
 - `presets.py` — built-in endpoint presets (`generic`, `omada`).
 - `hooks.py` — `create_hooks_app()`: the public webhook FastAPI app
   (`/health`, `/hooks/{slug}`, `/omada-webhook`), plus

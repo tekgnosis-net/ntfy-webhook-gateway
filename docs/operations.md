@@ -58,13 +58,21 @@ Title and message templates are plain text with `{...}` placeholders:
   resolves to a non-null value is used. Useful when a webhook sends either
   `{"event": {"text": "..."}}` or `{"text": "..."}` depending on version.
 - `{payload}` — the whole received event, pretty-printed JSON (or the raw
-  request body if it wasn't valid JSON).
+  request body if it wasn't valid JSON). Credential fields (`shardSecret`,
+  `secret`) are redacted so a webhook's own secret never appears inside a
+  notification.
+
+A placeholder that resolves to a **list** renders one item per line
+(Omada's legacy `text` field, for example, is a list of event lines).
 
 Any placeholder whose path doesn't resolve renders as empty text — it
-never causes an error. If the rendered **title** ends up empty, the
-notification falls back to the endpoint's name. If the rendered
-**message** ends up empty, it falls back to the same pretty-printed
-payload text as `{payload}`.
+never causes an error. Fallbacks are strict about templates that come up
+empty: if **every** placeholder in a template resolves to nothing, the
+whole template counts as empty even when it contains literal text, so you
+never receive a punctuation-only skeleton like `[] :`. An empty **title**
+falls back to the endpoint's name; an empty **message** falls back to the
+same pretty-printed payload text as `{payload}`. Templates with no
+placeholders at all are treated as intentional static text and sent as-is.
 
 ## Level rules
 
@@ -157,6 +165,14 @@ The database schema is created idempotently at startup (`CREATE TABLE IF
 NOT EXISTS ...`), and new columns added to existing tables (e.g. the
 `secret` column) are migrated in automatically on connect, so upgrades never
 require a manual migration step — just pull the new image and restart.
+
+One thing that does NOT auto-migrate: **stored endpoint templates**. Presets
+only pre-fill templates at creation time, so when an upgrade improves a
+built-in preset, existing endpoints keep the template strings they were
+saved with. To adopt an improved mapping, edit the endpoint's templates by
+hand (the current Omada preset uses title `Omada: {Site|event.category|category}`
+and message `{description|event.text|text}`) or delete and recreate the
+endpoint from the preset.
 
 ## Troubleshooting
 

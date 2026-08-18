@@ -149,8 +149,11 @@ write-only masking for `secret`.
    acking fast prevents duplicate storms and decouples the sender's timeout
    budget from ntfy's availability.
 5. Per event: render title/message templates. Missing placeholder → empty
-   string; a fully empty rendered message falls back to the pretty-printed
-   payload (truncated).
+   string; a template whose placeholders ALL resolve empty counts as empty
+   even when it contains literal text (no punctuation-only skeletons). An
+   empty title falls back to the endpoint name; an empty message falls back
+   to the pretty-printed payload (truncated, credential keys redacted).
+   List values render one item per line.
 6. Read `level_field`, uppercase, look up in `rules` → priority + extra tags;
    no match → `default_priority` and base tags only.
 7. POST to `{server}/{topic}`: message text as body; Title / Priority / Tags /
