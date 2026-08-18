@@ -234,6 +234,17 @@ Pytest, FastAPI test clients for both apps, ntfy mocked with `respx`.
   fail, rejected); legacy alias seeding; settings change visible on next
   request without restart; admin routes absent from the webhook app.
 
+## Documentation (final implementation step)
+
+- `README.md` (project root) — what the gateway does, quick start, screenshot
+  placeholder, links into `docs/`.
+- `docs/install.md` — Docker Compose install (ghcr image and build-from-source),
+  `.env` reference, volume/backup notes, CloudPanel exposure guidance
+  (webhook port public, admin port LAN-only).
+- `docs/operations.md` — creating endpoints and templates, presets, testing
+  deliveries, reading Logs/Reports, password management incl. the reset
+  script, log retention, upgrading.
+
 ## Error handling
 
 - Unknown/disabled slug → 404 (no information leak about which slugs exist).
