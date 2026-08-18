@@ -9,7 +9,8 @@ templates, log history, and delivery reports.
 ## Features
 
 - **Multiple endpoints** — each webhook source gets its own URL slug, ntfy
-  topic, and template, all managed from the UI.
+  topic, and template, all managed from the UI, with optional shared-secret
+  authentication.
 - **Template mapping with presets** — map arbitrary JSON payloads to a
   notification title, message, priority, and tags; start from a built-in
   preset (generic JSON, TP-Link Omada) or write your own.

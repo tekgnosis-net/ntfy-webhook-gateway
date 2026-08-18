@@ -102,6 +102,13 @@ non-null value overwrites it. Any new field or endpoint that surfaces
 endpoint data must go through (or replicate) this masking — never add a
 route that echoes the full token back.
 
+**Webhook secret invariant.** Per-endpoint `secret` (optional; empty = no
+auth) is compared in `hooks.receive()` via `secrets.compare_digest`, never
+`==`, to avoid timing side-channels. Unlike `ntfy_token`, `secret` IS
+returned to authenticated admins in full via `public_endpoint()` — deliberate,
+because the SPA needs it to reconstruct the copyable webhook URL, and this
+rides the LAN-only session-authed admin surface.
+
 **Two-listener isolation.** `create_hooks_app()` and `create_admin_app()`
 are two independent `FastAPI()` instances with disjoint route sets; nothing
 under `/api/*` (settings, endpoint CRUD, logs, auth) is mounted on the hooks

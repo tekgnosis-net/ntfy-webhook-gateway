@@ -93,6 +93,7 @@ docs/superpowers/specs/
 | `rules` | JSON: uppercased level → `{"priority": "...", "extra_tags": [...]}` |
 | `default_priority` | used when no rule matches |
 | `tags` | base tags (comma list), always sent |
+| `secret` | optional shared secret; empty = no auth. See "Webhook pipeline" below |
 | `created_at`, `updated_at` | timestamps |
 
 ### `settings`
@@ -123,25 +124,37 @@ without a new token keeps the stored one (write-only semantics). Encryption at
 rest is out of scope for v1 — the DB file lives on a local volume with
 container-only access.
 
+The per-endpoint webhook `secret` (see "Webhook pipeline" below) is handled
+differently and deliberately: the admin API returns it in full to
+authenticated admins, because the UI needs it to reconstruct the copyable
+webhook URL (`?secret=...`). This is safe because the admin surface is
+already LAN-only and session-authed — unlike `ntfy_token`, there's no
+write-only masking for `secret`.
+
 ## Webhook pipeline
 
 1. `POST /hooks/{slug}` → look up enabled endpoint; unknown or disabled → 404.
-2. Parse body: JSON object → one event; JSON array → one event per item;
+2. If the endpoint has a `secret` set, require it on the request (as
+   `?secret=...` or an `X-Webhook-Secret` header) — compared with
+   `secrets.compare_digest`; missing or wrong → same 404 as an unknown slug
+   (no information leak), logged as a `rejected` delivery. An empty secret
+   skips this check entirely, preserving legacy no-auth behavior.
+3. Parse body: JSON object → one event; JSON array → one event per item;
    non-JSON → wrapped as `{"body": "<raw text>"}` so `{body}` resolves
    normally. The special placeholder `{payload}` renders the whole event
    pretty-printed (works for both JSON and raw-text events).
-3. Respond **202 immediately**; dispatch continues in a background task.
+4. Respond **202 immediately**; dispatch continues in a background task.
    Rationale: webhook senders have short timeouts and aggressive retry loops —
    acking fast prevents duplicate storms and decouples the sender's timeout
    budget from ntfy's availability.
-4. Per event: render title/message templates. Missing placeholder → empty
+5. Per event: render title/message templates. Missing placeholder → empty
    string; a fully empty rendered message falls back to the pretty-printed
    payload (truncated).
-5. Read `level_field`, uppercase, look up in `rules` → priority + extra tags;
+6. Read `level_field`, uppercase, look up in `rules` → priority + extra tags;
    no match → `default_priority` and base tags only.
-6. POST to `{server}/{topic}`: message text as body; Title / Priority / Tags /
+7. POST to `{server}/{topic}`: message text as body; Title / Priority / Tags /
    `Authorization: Bearer` as headers (ntfy's header-based metadata API).
-7. Up to 3 attempts with backoff (1s / 5s / 25s). Final outcome recorded in
+8. Up to 3 attempts with backoff (1s / 5s / 25s). Final outcome recorded in
    `deliveries` — no silent failures.
 
 ### Presets

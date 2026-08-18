@@ -16,6 +16,25 @@ Each endpoint row in the table shows its full webhook URL with a **Copy**
 button next to it, so you can paste it straight into the sending service's
 webhook configuration.
 
+## Webhook secret
+
+An endpoint can optionally require a shared secret on incoming webhook
+requests. Leave it empty (the default) and the endpoint accepts any request
+for its slug, exactly like before this feature existed. Set one and every
+POST must present it, either as a `?secret=...` query parameter or an
+`X-Webhook-Secret` header — pick whichever the sending service supports; a
+request with a missing or wrong secret gets the same `404` as an unknown
+slug, and is logged as `rejected`. The editor's **Generate** button fills the
+field with 32 random URL-safe characters if you'd rather not make one up.
+Once a secret is set, the endpoint's webhook URL (and its **Copy** button)
+automatically includes `?secret=...` so you can paste the whole thing
+straight into the sending service.
+
+The legacy `omada` endpoint seeded from environment variables has no secret
+until you set one in its editor — remember to update the Omada controller's
+configured webhook URL to include `?secret=...` afterward, or its requests
+will start getting rejected.
+
 ## Timestamp display
 
 All delivery and endpoint timestamps are stored in UTC. The admin UI
@@ -84,7 +103,9 @@ opens a detail drawer with the full received payload, the rendered
 notification title/message, the ntfy HTTP status, attempt count, duration,
 source IP, and error text (if any). An **Auto-refresh** checkbox polls for
 new rows every 5 seconds. A `rejected` status means the webhook hit a
-disabled endpoint — the request was logged but nothing was sent to ntfy.
+disabled endpoint, or (if the endpoint has a secret set) presented a missing
+or wrong secret — either way, the request was logged but nothing was sent to
+ntfy.
 
 ## Reports tab
 
@@ -131,8 +152,9 @@ docker compose pull && docker compose up -d
 ```
 
 The database schema is created idempotently at startup (`CREATE TABLE IF
-NOT EXISTS ...`), so upgrades never require a manual migration step — just
-pull the new image and restart.
+NOT EXISTS ...`), and new columns added to existing tables (e.g. the
+`secret` column) are migrated in automatically on connect, so upgrades never
+require a manual migration step — just pull the new image and restart.
 
 ## Troubleshooting
 
