@@ -2,7 +2,8 @@ import httpx
 import respx
 
 from app import db as dbq
-from app.hooks import build_notification, dispatch_event, parse_events
+from app import ntfy
+from app.hooks import MAX_BODY, build_notification, dispatch_event, parse_events
 
 
 def test_parse_events_shapes():
@@ -56,3 +57,41 @@ async def test_dispatch_without_server_fails(state, sample_endpoint_data):
     outcome = await dispatch_event(state, endpoint, {"msg": "x"}, "", "")
     assert outcome["status"] == "failed" and outcome["attempts"] == 0
     assert "no ntfy server" in outcome["error"]
+
+
+def test_build_notification_truncates_oversized_message(sample_endpoint_data):
+    # message_template renders empty -> falls back to pretty-printed payload,
+    # which must be truncated to MAX_BODY regardless of which branch produced it.
+    endpoint = {**sample_endpoint_data, "message_template": "{missing}"}
+    event = {"blob": "x" * (MAX_BODY * 2)}
+    notif = build_notification(endpoint, event)
+    assert len(notif["message"]) == MAX_BODY
+
+
+@respx.mock
+async def test_dispatch_unicode_title_is_delivered_and_recorded(state, sample_endpoint_data):
+    data = {**sample_endpoint_data, "title_template": "Gerät ⚠ {msg}"}
+    endpoint = await dbq.create_endpoint(state.db, data)
+    route = respx.post("https://ntfy.example.com/alerts").mock(return_value=httpx.Response(200))
+    outcome = await dispatch_event(state, endpoint, {"msg": "offline"}, "1.2.3.4", "{}")
+    assert outcome["status"] == "delivered"
+    sent_title = route.calls[0].request.headers["Title"]
+    assert sent_title.isascii() and sent_title.startswith("=?UTF-8?B?")
+    row = await dbq.get_delivery(state.db, outcome["delivery_id"])
+    assert row["status"] == "delivered"
+    assert row["title"] == "Gerät ⚠ offline"
+
+
+async def test_dispatch_records_failure_on_unexpected_exception(state, sample_endpoint_data, monkeypatch):
+    endpoint = await dbq.create_endpoint(state.db, sample_endpoint_data)
+
+    async def boom(*args, **kwargs):
+        raise ValueError("boom")
+
+    monkeypatch.setattr(ntfy, "send", boom)
+    outcome = await dispatch_event(state, endpoint, {"msg": "x"}, "1.2.3.4", "{}")
+    assert outcome["status"] == "failed"
+    assert "ValueError" in outcome["error"]
+    row = await dbq.get_delivery(state.db, outcome["delivery_id"])
+    assert row["status"] == "failed"
+    assert "ValueError" in row["error"]

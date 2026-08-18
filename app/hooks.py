@@ -26,7 +26,7 @@ def parse_events(raw: bytes) -> list[dict]:
 
 def build_notification(endpoint: dict, event: dict) -> dict:
     title = render(endpoint["title_template"], event) or endpoint["name"]
-    message = render(endpoint["message_template"], event) or payload_text(event)
+    message = (render(endpoint["message_template"], event) or payload_text(event))[:MAX_BODY]
     priority = endpoint["default_priority"] or "default"
     tags = [t.strip() for t in (endpoint["tags"] or "").split(",") if t.strip()]
     level = resolve_first(event, endpoint["level_field"]) if endpoint["level_field"] else None
@@ -45,11 +45,14 @@ async def dispatch_event(state, endpoint, event, source_ip, request_body) -> dic
     if not server:
         result = ntfy.SendResult(False, None, "no ntfy server configured", 0)
     else:
-        result = await ntfy.send(
-            state.client, server, endpoint["ntfy_topic"], endpoint["ntfy_token"],
-            notification["title"], notification["message"], notification["priority"],
-            notification["tags"], retry_delays=state.retry_delays,
-        )
+        try:
+            result = await ntfy.send(
+                state.client, server, endpoint["ntfy_topic"], endpoint["ntfy_token"],
+                notification["title"], notification["message"], notification["priority"],
+                notification["tags"], retry_delays=state.retry_delays,
+            )
+        except Exception as exc:  # a dispatch must never vanish without a delivery row
+            result = ntfy.SendResult(False, None, f"{exc.__class__.__name__}: {exc}", 0)
     status = "delivered" if result.ok else "failed"
     delivery_id = await dbq.record_delivery(
         state.db, endpoint_id=endpoint["id"], status=status, source_ip=source_ip,
