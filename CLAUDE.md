@@ -74,9 +74,9 @@ would reintroduce exactly the staleness bug class this design avoids, for a
 cost (a few extra SQLite reads per request) that doesn't matter at this
 scale.
 
-**202 + background dispatch.** `hooks.receive()` parses the incoming body
+**200 + background dispatch.** `hooks.receive()` parses the incoming body
 into one or more events, calls `state.spawn(dispatch_event(...))` for each,
-and returns `202 {"status": "accepted", "events": N}` immediately — before
+and returns `200 {"status": "accepted", "events": N}` immediately — before
 any ntfy call has happened. Actual delivery (including up to three retries
 with 1s/5s/25s backoff on failure) runs in a detached `asyncio.Task` tracked
 by `AppState._tasks`. This keeps the webhook response fast and independent
@@ -143,7 +143,7 @@ what's written to the database.
   test functions need no `@pytest.mark.asyncio` decorator.
 - ntfy HTTP calls are mocked with `respx` (`@respx.mock` + `respx.post(url).mock(...)`)
   rather than hitting a real server.
-- Because webhook POSTs return 202 before delivery finishes, tests that
+- Because webhook POSTs return 200 before delivery finishes, tests that
   assert on delivery rows must `await state.drain()` first to let the
   spawned background task(s) complete.
 
