@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ntfy Webhook Gateway</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div id="login" class="login hidden">
+  <form id="login-form" class="card">
+    <h1>ntfy Webhook Gateway</h1>
+    <input type="password" id="login-password" placeholder="Admin password"
+           autocomplete="current-password" required>
+    <button type="submit">Sign in</button>
+    <p id="login-error" class="error hidden">Wrong password</p>
+  </form>
+</div>
+<header>
+  <h1>ntfy Webhook Gateway</h1>
+  <nav>
+    <a href="#/dashboard" data-tab="dashboard">Dashboard</a>
+    <a href="#/settings" data-tab="settings">Settings</a>
+    <a href="#/reports" data-tab="reports">Reports</a>
+    <a href="#/logs" data-tab="logs">Logs</a>
+  </nav>
+  <button id="logout" class="ghost hidden">Log out</button>
+</header>
+<div id="banner" class="banner hidden">
+  No admin password is set — anyone who can reach this port can read tokens and
+  change settings. Set a password in Settings.
+</div>
+<main id="view"></main>
+<div id="toast" class="toast hidden"></div>
+<script src="/app.js"></script>
+</body>
+</html>
