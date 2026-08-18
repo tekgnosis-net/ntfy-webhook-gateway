@@ -174,3 +174,82 @@ async def delete_session(db, token_hash):
 async def purge_sessions(db):
     await db.execute("DELETE FROM sessions WHERE expires_at<=?", (utcnow(),))
     await db.commit()
+
+
+MAX_BODY_CHARS = 65536
+
+
+async def record_delivery(db, *, endpoint_id, status, source_ip="", request_body="",
+                          title="", message="", ntfy_status=None, error=None,
+                          attempts=0, duration_ms=0) -> int:
+    cur = await db.execute(
+        "INSERT INTO deliveries (endpoint_id, received_at, source_ip, request_body,"
+        " title, message, status, ntfy_status, error, attempts, duration_ms)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (endpoint_id, utcnow(), source_ip, request_body[:MAX_BODY_CHARS],
+         title, message, status, ntfy_status, error, attempts, duration_ms),
+    )
+    await db.commit()
+    return cur.lastrowid
+
+
+async def list_deliveries(db, endpoint_id=None, status=None, q=None,
+                          before_id=None, limit=50) -> list[dict]:
+    where, params = ["1=1"], []
+    if endpoint_id is not None:
+        where.append("endpoint_id=?")
+        params.append(endpoint_id)
+    if status:
+        where.append("status=?")
+        params.append(status)
+    if q:
+        where.append("(request_body LIKE ? OR title LIKE ? OR message LIKE ? OR error LIKE ?)")
+        params += [f"%{q}%"] * 4
+    if before_id is not None:
+        where.append("id<?")
+        params.append(before_id)
+    cur = await db.execute(
+        f"SELECT * FROM deliveries WHERE {' AND '.join(where)} ORDER BY id DESC LIMIT ?",
+        [*params, limit],
+    )
+    return [dict(r) for r in await cur.fetchall()]
+
+
+async def get_delivery(db, delivery_id) -> dict | None:
+    cur = await db.execute("SELECT * FROM deliveries WHERE id=?", (delivery_id,))
+    row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def delivery_stats(db, since_iso) -> list[dict]:
+    cur = await db.execute(
+        "SELECT endpoint_id, status, COUNT(*) AS n FROM deliveries"
+        " WHERE received_at>=? GROUP BY endpoint_id, status",
+        (since_iso,),
+    )
+    return [dict(r) for r in await cur.fetchall()]
+
+
+async def delivery_buckets(db, since_iso, fmt, offset_minutes=0) -> list[dict]:
+    # offset_minutes follows JS Date.getTimezoneOffset(): minutes UTC is ahead
+    # of the display zone, so display time = UTC - offset.
+    modifier = f"{-offset_minutes} minutes"
+    cur = await db.execute(
+        "SELECT strftime(?, received_at, ?) AS bucket, status, COUNT(*) AS n"
+        " FROM deliveries WHERE received_at>=? GROUP BY bucket, status ORDER BY bucket",
+        (fmt, modifier, since_iso),
+    )
+    return [dict(r) for r in await cur.fetchall()]
+
+
+async def last_delivery_times(db) -> dict[int, str]:
+    cur = await db.execute(
+        "SELECT endpoint_id, MAX(received_at) AS last_at FROM deliveries GROUP BY endpoint_id"
+    )
+    return {r["endpoint_id"]: r["last_at"] for r in await cur.fetchall()}
+
+
+async def purge_deliveries(db, older_than_iso) -> int:
+    cur = await db.execute("DELETE FROM deliveries WHERE received_at<?", (older_than_iso,))
+    await db.commit()
+    return cur.rowcount
